@@ -1,0 +1,55 @@
+export interface MonthlyLedger {
+  openingBalanceClp: number;
+  incomeClp: number;
+  fixedExpensesClp: number;
+  additionalExpensesClp: number;
+  sharedExpensesClp: number;
+}
+
+export function totalExpensesClp(ledger: MonthlyLedger): number {
+  return ledger.fixedExpensesClp + ledger.additionalExpensesClp + ledger.sharedExpensesClp;
+}
+
+export function monthBalanceClp(ledger: MonthlyLedger): number {
+  return ledger.openingBalanceClp + ledger.incomeClp - totalExpensesClp(ledger);
+}
+
+export interface ProjectionInput {
+  /** Saldo disponible hoy (después de lo ya registrado). */
+  balanceNowClp: number;
+  /** Gastos fijos aún no registrados este mes. */
+  pendingFixedClp: number;
+  /** Gastos variables/adicionales comprometidos pero no registrados. */
+  pendingAdditionalClp: number;
+  /** Promedio diario de gasto variable ya observado (opcional). */
+  avgDailyVariableClp: number;
+  dayOfMonth: number;
+  daysInMonth: number;
+}
+
+export interface ProjectionResult {
+  projectedEndBalanceClp: number;
+  dailyAllowanceClp: number;
+  willRunShort: boolean;
+  daysRemaining: number;
+  projectedShortfallClp: number;
+}
+
+export function computeProjection(input: ProjectionInput): ProjectionResult {
+  const daysRemaining = Math.max(0, input.daysInMonth - input.dayOfMonth);
+  const committedPending = input.pendingFixedClp + input.pendingAdditionalClp;
+  const projectedVariable = Math.round(input.avgDailyVariableClp * daysRemaining);
+  const projectedEnd = input.balanceNowClp - committedPending - projectedVariable;
+
+  const spendablePool = input.balanceNowClp - committedPending;
+  const dailyAllowance =
+    daysRemaining > 0 ? Math.max(0, Math.floor(spendablePool / daysRemaining)) : Math.max(0, spendablePool);
+
+  return {
+    projectedEndBalanceClp: Math.round(projectedEnd),
+    dailyAllowanceClp: dailyAllowance,
+    willRunShort: projectedEnd < 0,
+    daysRemaining,
+    projectedShortfallClp: projectedEnd < 0 ? Math.abs(Math.round(projectedEnd)) : 0,
+  };
+}

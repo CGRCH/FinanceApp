@@ -1,0 +1,53 @@
+export const SCHEMA_VERSION = 1;
+
+export const CREATE_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+  );`,
+  `CREATE TABLE IF NOT EXISTS transactions (
+    id TEXT PRIMARY KEY NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('income','expense')),
+    kind TEXT CHECK(kind IN ('fixed','additional','shared') OR kind IS NULL),
+    category TEXT NOT NULL,
+    amount_clp INTEGER NOT NULL,
+    total_amount_clp INTEGER,
+    split_people INTEGER,
+    month_key TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL
+  );`,
+  `CREATE TABLE IF NOT EXISTS debts (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    balance_clp INTEGER NOT NULL,
+    minimum_payment_clp INTEGER NOT NULL,
+    interest_rate_bps INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  );`,
+];
+
+export type TransactionType = 'income' | 'expense';
+export type ExpenseKind = 'fixed' | 'additional' | 'shared';
+
+export interface TransactionRow {
+  id: string;
+  type: TransactionType;
+  kind: ExpenseKind | null;
+  category: string;
+  amount_clp: number;
+  total_amount_clp: number | null;
+  split_people: number | null;
+  month_key: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface DebtRow {
+  id: string;
+  name: string;
+  balance_clp: number;
+  minimum_payment_clp: number;
+  interest_rate_bps: number;
+  sort_order: number;
+}
