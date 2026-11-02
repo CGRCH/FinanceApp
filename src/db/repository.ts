@@ -14,60 +14,24 @@ import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
 
-import { SCHEMA_VERSION, CREATE_STATEMENTS, type DebtRow, type ExpenseKind, type TransactionRow, type TransactionType } from './schema';
+import { CREATE_STATEMENTS, type DebtRow, type ExpenseKind, type TransactionRow, type TransactionType } from './schema';
 
 function id(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-async function runMigrations(db: SQLiteDatabase): Promise<void> {
-  const ver = Number.parseInt((await getSetting(db, 'schema_version')) ?? '0', 10);
-  if (ver >= SCHEMA_VERSION) return;
-
-  await db.execAsync(`CREATE TABLE IF NOT EXISTS month_records (
-    month_key TEXT PRIMARY KEY NOT NULL,
-    income_clp INTEGER NOT NULL DEFAULT 0,
-    reserve_clp INTEGER NOT NULL DEFAULT 0,
-    household_split_people INTEGER NOT NULL DEFAULT 1,
-    updated_at TEXT NOT NULL
-  );`);
-
-  try {
-    await db.execAsync('ALTER TABLE transactions ADD COLUMN debt_id TEXT');
-  } catch {
-    /* ya existe */
-  }
-
-  if (ver === 1) {
-    await db.execAsync(`CREATE TABLE transactions_v2 (
-      id TEXT PRIMARY KEY NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('income','expense')),
-      kind TEXT CHECK(kind IN ('fixed','additional','shared','household') OR kind IS NULL),
-      category TEXT NOT NULL,
-      amount_clp INTEGER NOT NULL,
-      total_amount_clp INTEGER,
-      split_people INTEGER,
-      debt_id TEXT,
-      month_key TEXT NOT NULL,
-      note TEXT,
-      created_at TEXT NOT NULL
-    );`);
-    await db.execAsync(`
-      INSERT INTO transactions_v2 (id, type, kind, category, amount_clp, total_amount_clp, split_people, month_key, note, created_at)
-      SELECT id, type, kind, category, amount_clp, total_amount_clp, split_people, month_key, note, created_at FROM transactions;
-    `);
-    await db.execAsync('DROP TABLE transactions');
-    await db.execAsync('ALTER TABLE transactions_v2 RENAME TO transactions');
-  }
-
-  await setSetting(db, 'schema_version', String(SCHEMA_VERSION));
-}
+import { migrateSchema } from './migrate';
 
 export async function initDatabase(db: SQLiteDatabase): Promise<void> {
   for (const sql of CREATE_STATEMENTS) {
     await db.execAsync(sql);
   }
-  await runMigrations(db);
+  try {
+    await migrateSchema(db);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Error de migración de base local: ${message}`);
+  }
 }
 
 export async function getSetting(db: SQLiteDatabase, key: string): Promise<string | null> {

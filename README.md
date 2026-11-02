@@ -23,6 +23,7 @@ npm start
 - Se eliminó la carga de fuentes custom en el arranque (tipografía del sistema).
 - SQLite desactiva el listener de cambios en caliente (`enableChangeListener: false`).
 - En web, la **primera** compilación de Metro puede demorar varios minutos; las siguientes son mucho más rápidas. En móvil nativo el arranque suele ser inmediato con Expo Go.
+- **Una pestaña a la vez en web**: SQLite usa almacenamiento OPFS; varias pestañas con FinanceApp pueden bloquearse. Si falla, la app muestra un mensaje para cerrar otras pestañas, reintentar o reiniciar datos locales.
 
 ## Flujo de uso
 

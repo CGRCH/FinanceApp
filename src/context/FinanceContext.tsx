@@ -23,11 +23,14 @@ import { currentMonthKey, daysInMonth } from '@/src/domain/money';
 import type { TransactionRow } from '@/src/db/schema';
 import type { GestiónImportResult } from '@/src/domain/xlsxGestión';
 import type { MonthComparePoint } from '@/src/domain/monthCompare';
+import { resetLocalDatabase } from '@/src/db/databaseLifecycle';
 
 type ThemePreference = 'system' | 'light' | 'dark';
 
 interface FinanceContextValue {
   ready: boolean;
+  bootstrapError: Error | null;
+  slowBootHint: boolean;
   showOnboarding: boolean;
   completeOnboarding: () => Promise<void>;
   loadExampleData: () => Promise<void>;
@@ -51,16 +54,27 @@ interface FinanceContextValue {
   setOpeningBalanceClp: (value: number) => Promise<void>;
   emergencyFundClp: number;
   extraDebtPaymentClp: number;
+  retryBootstrap: () => void;
+  resetLocalData: () => Promise<void>;
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
 
 const THEME_KEY = 'theme_preference';
 
-export function FinanceProvider({ children }: { children: React.ReactNode }) {
+export function FinanceProvider({
+  children,
+  onRequestRemount,
+}: {
+  children: React.ReactNode;
+  onRequestRemount?: () => void;
+}) {
   const db = useSQLiteContext();
   const system = useSystemScheme();
   const [ready, setReady] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<Error | null>(null);
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
+  const [slowBootHint, setSlowBootHint] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
   const [monthKey, setMonthKey] = useState(currentMonthKey());
@@ -113,19 +127,54 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   }, [db, monthKey]);
 
   useEffect(() => {
+    let cancelled = false;
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setSlowBootHint(true);
+    }, 12_000);
+
     (async () => {
-      const savedTheme = await AsyncStorage.getItem(THEME_KEY);
-      if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
-        setThemePreferenceState(savedTheme);
+      try {
+        const savedTheme = await AsyncStorage.getItem(THEME_KEY);
+        if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
+          setThemePreferenceState(savedTheme);
+        }
+        const onboardingDone = (await getSetting(db, 'onboarding_done')) === '1';
+        const hasData = await hasAnyFinanceData(db);
+        if (!cancelled) setShowOnboarding(!onboardingDone && !hasData);
+        await refreshMonthIndex();
+        await refresh();
+        if (!cancelled) {
+          setBootstrapError(null);
+          setReady(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setBootstrapError(error instanceof Error ? error : new Error(String(error)));
+          setReady(true);
+        }
+      } finally {
+        clearTimeout(slowTimer);
       }
-      const onboardingDone = (await getSetting(db, 'onboarding_done')) === '1';
-      const hasData = await hasAnyFinanceData(db);
-      setShowOnboarding(!onboardingDone && !hasData);
-      await refreshMonthIndex();
-      await refresh();
-      setReady(true);
     })();
-  }, [db, refresh, refreshMonthIndex]);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(slowTimer);
+    };
+  }, [db, refresh, refreshMonthIndex, bootstrapAttempt]);
+
+  const retryBootstrap = useCallback(() => {
+    setBootstrapError(null);
+    setReady(false);
+    setSlowBootHint(false);
+    setBootstrapAttempt((n) => n + 1);
+  }, []);
+
+  const resetLocalData = useCallback(async () => {
+    await resetLocalDatabase();
+    onRequestRemount?.();
+    retryBootstrap();
+  }, [onRequestRemount, retryBootstrap]);
 
   useEffect(() => {
     if (ready) refresh();
@@ -199,6 +248,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       ready,
+      bootstrapError,
+      slowBootHint,
       showOnboarding,
       completeOnboarding,
       loadExampleData,
@@ -222,9 +273,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       setOpeningBalanceClp,
       emergencyFundClp,
       extraDebtPaymentClp,
+      retryBootstrap,
+      resetLocalData,
     }),
     [
       ready,
+      bootstrapError,
+      slowBootHint,
       showOnboarding,
       completeOnboarding,
       loadExampleData,
@@ -247,6 +302,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       setOpeningBalanceClp,
       emergencyFundClp,
       extraDebtPaymentClp,
+      retryBootstrap,
+      resetLocalData,
     ],
   );
 
