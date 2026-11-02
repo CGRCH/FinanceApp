@@ -2,6 +2,7 @@ import { buildAdvice } from '../advice';
 import { compareStrategies, simulatePayoff } from '../debtStrategies';
 import { computeProjection, monthBalanceClp } from '../projection';
 import { yourShareClp } from '../sharedExpenses';
+import { computeMonthTotals, emptyPlanilla, matchDebtIdForCategory } from '../monthPlanilla';
 import { createFictionalFixtureWorkbook, parseGestiónWorkbook } from '../xlsxGestión';
 
 describe('computeProjection', () => {
@@ -23,15 +24,17 @@ describe('computeProjection', () => {
 });
 
 describe('monthBalanceClp', () => {
-  it('resta gastos fijos, adicionales y compartidos', () => {
+  it('resta gastos y reserva', () => {
     const balance = monthBalanceClp({
       openingBalanceClp: 0,
       incomeClp: 1_000_000,
       fixedExpensesClp: 400_000,
       additionalExpensesClp: 150_000,
       sharedExpensesClp: 50_000,
+      reserveClp: 80_000,
+      fondosMenosGastosClp: 450_000,
     });
-    expect(balance).toBe(400_000);
+    expect(balance).toBe(320_000);
   });
 });
 
@@ -76,6 +79,26 @@ describe('debt strategies', () => {
     const cmp = compareStrategies(debts, 50_000, new Date('2026-01-01'));
     expect(['snowball', 'avalanche']).toContain(cmp.recommended);
     expect(cmp.summary.length).toBeGreaterThan(10);
+  });
+});
+
+describe('month planilla totals', () => {
+  it('calcula fondos menos gastos y parte hogar', () => {
+    const p = emptyPlanilla('2026-10');
+    p.incomeClp = 1_000_000;
+    p.fixedLines[0].amountClp = 400_000;
+    p.additionalLines = [{ id: 'a', category: 'Comida', amountClp: 100_000 }];
+    p.householdLines[0].totalClp = 300_000;
+    p.householdSplitPeople = 3;
+    p.reserveClp = 50_000;
+    const t = computeMonthTotals(p);
+    expect(t.fondosMenosGastosClp).toBe(500_000);
+    expect(t.householdYourShareClp).toBe(100_000);
+  });
+
+  it('vincula categoría con deuda', () => {
+    const id = matchDebtIdForCategory('Pago Brian', [{ id: '1', name: 'Brian' }]);
+    expect(id).toBe('1');
   });
 });
 

@@ -3,7 +3,10 @@ export interface MonthlyLedger {
   incomeClp: number;
   fixedExpensesClp: number;
   additionalExpensesClp: number;
+  /** Parte individual hogar + legacy shared. */
   sharedExpensesClp: number;
+  reserveClp: number;
+  fondosMenosGastosClp: number;
 }
 
 export function totalExpensesClp(ledger: MonthlyLedger): number {
@@ -11,7 +14,12 @@ export function totalExpensesClp(ledger: MonthlyLedger): number {
 }
 
 export function monthBalanceClp(ledger: MonthlyLedger): number {
-  return ledger.openingBalanceClp + ledger.incomeClp - totalExpensesClp(ledger);
+  return (
+    ledger.openingBalanceClp +
+    ledger.incomeClp -
+    totalExpensesClp(ledger) -
+    ledger.reserveClp
+  );
 }
 
 export interface ProjectionInput {

@@ -24,8 +24,8 @@ export default function PanelScreen() {
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Agregar movimiento"
-          onPress={() => router.push('/movimiento/nuevo')}
+          accessibilityLabel="Ir a planilla del mes"
+          onPress={() => router.push('/(tabs)/planilla')}
           style={StyleSheet.flatten([styles.fab, { backgroundColor: colors.primary }])}>
           <Text style={styles.fabText}>+</Text>
         </Pressable>
@@ -62,6 +62,19 @@ export default function PanelScreen() {
           </BodyText>
         </Card>
       )}
+
+      <Card>
+        <SectionTitle>Fondos menos gastos</SectionTitle>
+        <MoneyText amountClp={ledger.fondosMenosGastosClp} large />
+        <BodyText muted>Ingresos menos fijos y adicionales (como tu Excel).</BodyText>
+      </Card>
+
+      {ledger.reserveClp > 0 ? (
+        <Card>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Reserva del mes</Text>
+          <MoneyText amountClp={ledger.reserveClp} />
+        </Card>
+      ) : null}
 
       <Card>
         <Text style={[styles.label, { color: colors.textSecondary }]}>Cuánto podís gastar por día</Text>

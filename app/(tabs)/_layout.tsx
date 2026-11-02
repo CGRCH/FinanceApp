@@ -32,11 +32,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="movimientos"
+        name="planilla"
         options={{
-          title: 'Movimientos',
+          title: 'Planilla',
           tabBarIcon: ({ color }) => (
-            <SymbolView name={{ ios: 'list.bullet', android: 'list', web: 'list' }} tintColor={color} size={24} />
+            <SymbolView name={{ ios: 'tablecells', android: 'grid_on', web: 'grid_on' }} tintColor={color} size={24} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="historial"
+        options={{
+          title: 'Historial',
+          tabBarIcon: ({ color }) => (
+            <SymbolView name={{ ios: 'calendar', android: 'calendar_month', web: 'calendar_month' }} tintColor={color} size={24} />
           ),
         }}
       />

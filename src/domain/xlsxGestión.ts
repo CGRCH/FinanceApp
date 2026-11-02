@@ -1,5 +1,7 @@
 import * as XLSX from 'xlsx';
 
+import { parseSplitFromLabel } from './monthPlanilla';
+
 const MONTH_NAMES: Record<string, number> = {
   enero: 1,
   febrero: 2,
@@ -19,6 +21,7 @@ export interface ImportedMovement {
   category: string;
   amountClp: number;
   secondaryAmountClp?: number;
+  debtId?: string;
 }
 
 export interface ImportedMonth {
@@ -26,6 +29,9 @@ export interface ImportedMonth {
   incomes: ImportedMovement[];
   fixedExpenses: ImportedMovement[];
   additionalExpenses: ImportedMovement[];
+  reserveClp?: number;
+  householdExpenses?: ImportedMovement[];
+  householdSplitPeople?: number;
 }
 
 export interface ImportedDebt {
@@ -90,9 +96,12 @@ function parseMonthColumn(rows: unknown[][], baseCol: number, year: number, mont
     incomes: [],
     fixedExpenses: [],
     additionalExpenses: [],
+    householdExpenses: [],
+    reserveClp: 0,
+    householdSplitPeople: 1,
   };
 
-  let section: 'none' | 'fixed' | 'additional' = 'none';
+  let section: 'none' | 'fixed' | 'additional' | 'household' = 'none';
 
   for (let r = 1; r < rows.length; r += 1) {
     const row = rows[r] ?? [];
@@ -126,7 +135,33 @@ function parseMonthColumn(rows: unknown[][], baseCol: number, year: number, mont
       continue;
     }
 
-    if (label.startsWith('fondos menos gastos') || label.startsWith('reserva')) {
+    if (label.startsWith('fondos menos gastos')) {
+      continue;
+    }
+
+    if (label.startsWith('reserva')) {
+      const amount = toClp(row[baseCol + 1]);
+      if (amount !== null && amount > 0) result.reserveClp = amount;
+      continue;
+    }
+
+    if (label.startsWith('gastos del mes general')) {
+      section = 'household';
+      continue;
+    }
+
+    if (label.startsWith('gastos totales') && section === 'household') {
+      continue;
+    }
+
+    if (label.startsWith('gastos individual')) {
+      const split = parseSplitFromLabel(labelRaw) ?? parseSplitFromLabel(String(row[baseCol + 2] ?? ''));
+      if (split) result.householdSplitPeople = split;
+      const amount = toClp(row[baseCol + 1]);
+      if (amount !== null && amount > 0 && !label.includes('/')) {
+        /* monto total individual ya calculado */
+      }
+      section = 'none';
       continue;
     }
 
@@ -144,6 +179,8 @@ function parseMonthColumn(rows: unknown[][], baseCol: number, year: number, mont
       result.fixedExpenses.push(movement);
     } else if (section === 'additional') {
       result.additionalExpenses.push(movement);
+    } else if (section === 'household') {
+      result.householdExpenses!.push(movement);
     }
   }
 
@@ -318,14 +355,7 @@ export function createFictionalFixtureWorkbook(): ArrayBuffer {
       ],
       additionalExpenses: [{ category: 'Supermercado', amountClp: 180_000 }],
     },
-    {
-      monthKey: '2026-02',
-      incomes: [{ category: 'Ingresos', amountClp: 1_200_000 }],
-      fixedExpenses: [{ category: 'Arriendo', amountClp: 350_000 }],
-      additionalExpenses: [
-        { category: 'Salida', amountClp: 60_000, secondaryAmountClp: 15_000 },
-      ],
-    },
+      { monthKey: '2026-02', incomes: [{ category: 'Ingresos', amountClp: 1_200_000 }], fixedExpenses: [{ category: 'Arriendo', amountClp: 350_000 }], additionalExpenses: [{ category: 'Salida', amountClp: 60_000 }], reserveClp: 40_000, householdExpenses: [{ category: 'Luz', amountClp: 30_000 }], householdSplitPeople: 2 },
   ];
   const debts: ImportedDebt[] = [
     { name: 'Tarjeta ficticia', originalClp: 400_000, paidClp: 100_000, balanceClp: 300_000 },

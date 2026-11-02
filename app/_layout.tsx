@@ -1,5 +1,4 @@
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
@@ -18,25 +17,12 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
   useEffect(() => {
-    if (error) throw error;
-  }, [error]);
-
-  useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
-  }, [loaded]);
-
-  if (!loaded) return null;
+    SplashScreen.hideAsync();
+  }, []);
 
   return (
-    <SQLiteProvider
-      databaseName="financeapp.db"
-      onInit={initDatabase}
-      options={{ enableChangeListener: true }}>
+    <SQLiteProvider databaseName="financeapp.db" onInit={initDatabase} options={{ enableChangeListener: false }}>
       <FinanceProvider>
         <RootStack />
       </FinanceProvider>
@@ -45,7 +31,14 @@ export default function RootLayout() {
 }
 
 function RootStack() {
-  const { effectiveScheme, ready } = useFinance();
+  const { effectiveScheme, ready, showOnboarding } = useFinance();
+
+  useEffect(() => {
+    if (ready && showOnboarding) {
+      router.replace('/onboarding');
+    }
+  }, [ready, showOnboarding]);
+
   if (!ready) return null;
 
   return (
@@ -53,7 +46,7 @@ function RootStack() {
       <StatusBar style={effectiveScheme === 'dark' ? 'light' : 'dark'} />
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="movimiento/nuevo" options={{ presentation: 'modal', title: 'Nuevo movimiento' }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
       </Stack>
     </>
   );

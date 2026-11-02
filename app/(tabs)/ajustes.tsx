@@ -7,7 +7,7 @@ import { exportDemoWorkbook, pickAndParseWorkbook, scheduleShortfallReminder } f
 import { spacing } from '@/src/theme/tokens';
 
 export default function AjustesScreen() {
-  const { themePreference, setThemePreference, importFromParsed, projection, refresh } = useFinance();
+  const { themePreference, setThemePreference, importFromParsed, projection, refresh, loadExampleData } = useFinance();
   const colors = useThemeColors();
 
   const onImport = async () => {
@@ -68,6 +68,14 @@ export default function AjustesScreen() {
             );
           })}
         </View>
+      </Card>
+
+      <Card>
+        <SectionTitle>Datos</SectionTitle>
+        <BodyText muted>Podés cargar datos ficticios para probar sin afectar tu planilla real.</BodyText>
+        <Pressable style={[styles.buttonOutline, { borderColor: colors.border }]} onPress={loadExampleData}>
+          <Text style={[styles.buttonOutlineText, { color: colors.text }]}>Cargar datos de ejemplo</Text>
+        </Pressable>
       </Card>
 
       <Card>

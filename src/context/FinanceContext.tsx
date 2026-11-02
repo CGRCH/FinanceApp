@@ -5,30 +5,40 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { buildAdvice } from '@/src/domain/advice';
 import { compareStrategies } from '@/src/domain/debtStrategies';
-import { debtRowsToAccounts } from '@/src/db/repository';
-import { computeProjection, monthBalanceClp } from '@/src/domain/projection';
-import { currentMonthKey, daysInMonth } from '@/src/domain/money';
 import {
+  buildMonthCompare,
   buildMonthlyLedger,
+  debtRowsToAccounts,
+  getSetting,
+  hasAnyFinanceData,
   importGestiónData,
+  listAllMonthKeys,
   listDebts,
   listTransactionsForMonth,
   seedDemoData,
-  getSetting,
   setSetting,
 } from '@/src/db/repository';
+import { computeProjection, monthBalanceClp } from '@/src/domain/projection';
+import { currentMonthKey, daysInMonth } from '@/src/domain/money';
 import type { TransactionRow } from '@/src/db/schema';
 import type { GestiónImportResult } from '@/src/domain/xlsxGestión';
+import type { MonthComparePoint } from '@/src/domain/monthCompare';
 
 type ThemePreference = 'system' | 'light' | 'dark';
 
 interface FinanceContextValue {
   ready: boolean;
+  showOnboarding: boolean;
+  completeOnboarding: () => Promise<void>;
+  loadExampleData: () => Promise<void>;
   themePreference: ThemePreference;
   setThemePreference: (value: ThemePreference) => Promise<void>;
   effectiveScheme: 'light' | 'dark';
   monthKey: string;
   setMonthKey: (key: string) => void;
+  monthKeys: string[];
+  refreshMonthIndex: () => Promise<void>;
+  comparePoints: MonthComparePoint[];
   transactions: TransactionRow[];
   refresh: () => Promise<void>;
   ledger: Awaited<ReturnType<typeof buildMonthlyLedger>>;
@@ -51,8 +61,11 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const db = useSQLiteContext();
   const system = useSystemScheme();
   const [ready, setReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
   const [monthKey, setMonthKey] = useState(currentMonthKey());
+  const [monthKeys, setMonthKeys] = useState<string[]>([]);
+  const [comparePoints, setComparePoints] = useState<MonthComparePoint[]>([]);
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [ledger, setLedger] = useState<Awaited<ReturnType<typeof buildMonthlyLedger>>>({
     openingBalanceClp: 0,
@@ -60,6 +73,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     fixedExpensesClp: 0,
     additionalExpensesClp: 0,
     sharedExpensesClp: 0,
+    reserveClp: 0,
+    fondosMenosGastosClp: 0,
   });
   const [openingBalanceClp, setOpeningBalanceState] = useState(0);
   const [emergencyFundClp, setEmergencyFundClp] = useState(0);
@@ -69,6 +84,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
 
   const effectiveScheme: 'light' | 'dark' =
     themePreference === 'system' ? (system === 'dark' ? 'dark' : 'light') : themePreference;
+
+  const refreshMonthIndex = useCallback(async () => {
+    const keys = await listAllMonthKeys(db);
+    setMonthKeys(keys);
+    setComparePoints(await buildMonthCompare(db));
+    if (keys.length && !keys.includes(monthKey)) {
+      setMonthKey(keys[0]);
+    }
+  }, [db, monthKey]);
 
   const refresh = useCallback(async () => {
     const rows = await listTransactionsForMonth(db, monthKey);
@@ -90,15 +114,18 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      await seedDemoData(db);
       const savedTheme = await AsyncStorage.getItem(THEME_KEY);
       if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
         setThemePreferenceState(savedTheme);
       }
+      const onboardingDone = (await getSetting(db, 'onboarding_done')) === '1';
+      const hasData = await hasAnyFinanceData(db);
+      setShowOnboarding(!onboardingDone && !hasData);
+      await refreshMonthIndex();
       await refresh();
       setReady(true);
     })();
-  }, [db, refresh]);
+  }, [db, refresh, refreshMonthIndex]);
 
   useEffect(() => {
     if (ready) refresh();
@@ -108,6 +135,19 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     setThemePreferenceState(value);
     await AsyncStorage.setItem(THEME_KEY, value);
   }, []);
+
+  const completeOnboarding = useCallback(async () => {
+    await setSetting(db, 'onboarding_done', '1');
+    setShowOnboarding(false);
+  }, [db]);
+
+  const loadExampleData = useCallback(async () => {
+    await seedDemoData(db);
+    await setSetting(db, 'onboarding_done', '1');
+    setShowOnboarding(false);
+    await refreshMonthIndex();
+    await refresh();
+  }, [db, refresh, refreshMonthIndex]);
 
   const setOpeningBalanceClp = useCallback(
     async (value: number) => {
@@ -120,10 +160,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const importFromParsed = useCallback(
     async (data: GestiónImportResult) => {
       const result = await importGestiónData(db, data.months, data.debts);
+      setShowOnboarding(false);
+      await refreshMonthIndex();
+      if (data.months.length) setMonthKey(data.months[data.months.length - 1].monthKey);
       await refresh();
       return result;
     },
-    [db, refresh],
+    [db, refresh, refreshMonthIndex],
   );
 
   const balanceClp = monthBalanceClp(ledger);
@@ -156,11 +199,17 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       ready,
+      showOnboarding,
+      completeOnboarding,
+      loadExampleData,
       themePreference,
       setThemePreference,
       effectiveScheme,
       monthKey,
       setMonthKey,
+      monthKeys,
+      refreshMonthIndex,
+      comparePoints,
       transactions,
       refresh,
       ledger,
@@ -176,10 +225,16 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       ready,
+      showOnboarding,
+      completeOnboarding,
+      loadExampleData,
       themePreference,
       setThemePreference,
       effectiveScheme,
       monthKey,
+      monthKeys,
+      refreshMonthIndex,
+      comparePoints,
       transactions,
       refresh,
       ledger,
