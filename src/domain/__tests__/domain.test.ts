@@ -112,15 +112,32 @@ describe('month selection', () => {
 });
 
 describe('month planilla totals', () => {
-  it('calcula fondos menos gastos y parte hogar', () => {
+  it('fondos menos gastos = ingresos − solo pagados', () => {
     const p = emptyPlanilla('2026-10');
     p.incomeClp = 1_000_000;
     p.fixedLines[0].amountClp = 400_000;
     p.additionalLines = [{ id: 'a', category: 'Comida', amountClp: 100_000 }];
     p.reserveClp = 50_000;
     const t = computeMonthTotals(p);
-    expect(t.fondosMenosGastosClp).toBe(500_000);
+    expect(t.fondosMenosGastosClp).toBe(1_000_000);
+    expect(t.availableClp).toBe(1_000_000);
+    expect(t.pendingOutflowsClp).toBe(500_000);
     expect(t.allOutflowsClp).toBe(500_000);
+    expect(t.afterPayingAllClp).toBe(450_000);
+  });
+
+  it('caso César: arriendo no pagado no reduce fondos menos gastos', () => {
+    const p = emptyPlanilla('2026-11');
+    p.incomeClp = 1_450_000;
+    p.fixedLines[0].category = 'Arriendo';
+    p.fixedLines[0].amountClp = 420_000;
+    p.fixedLines[0].paid = false;
+    const t = computeMonthTotals(p);
+    expect(t.fondosMenosGastosClp).toBe(1_450_000);
+    expect(t.pendingOutflowsClp).toBe(420_000);
+    p.fixedLines[0].paid = true;
+    const t2 = computeMonthTotals(p);
+    expect(t2.fondosMenosGastosClp).toBe(1_030_000);
   });
 
   it('divide cuentas seleccionadas entre N personas', () => {
@@ -141,17 +158,19 @@ describe('month planilla totals', () => {
     expect(id).toBe('1');
   });
 
-  it('calcula disponible con ítems pagados', () => {
+  it('abono de deuda cuenta en pagados solo si paid', () => {
     const p = emptyPlanilla('2026-11');
-    p.incomeClp = 1_000_000;
-    p.fixedLines[0].amountClp = 400_000;
-    p.fixedLines[0].paid = true;
-    p.additionalLines = [{ id: 'a', category: 'Comida', amountClp: 100_000, paid: false }];
-    const t = computeMonthTotals(p);
-    expect(t.fundTotalClp).toBe(1_000_000);
-    expect(t.paidSoFarClp).toBe(400_000);
-    expect(t.availableClp).toBe(600_000);
-    expect(t.pendingOutflowsClp).toBe(100_000);
+    p.incomeClp = 500_000;
+    p.debtPaymentLines = [
+      { id: 'dp1', debtId: 'd1', paymentKind: 'partial', amountClp: 80_000, paid: false },
+    ];
+    const t = computeMonthTotals(p, { d1: 200_000 });
+    expect(t.paidSoFarClp).toBe(0);
+    expect(t.pendingOutflowsClp).toBe(80_000);
+    p.debtPaymentLines[0].paid = true;
+    const t2 = computeMonthTotals(p, { d1: 200_000 });
+    expect(t2.paidSoFarClp).toBe(80_000);
+    expect(t2.fondosMenosGastosClp).toBe(420_000);
   });
 });
 

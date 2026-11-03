@@ -59,6 +59,8 @@ export interface MonthTotals {
   availableClp: number;
   pendingOutflowsClp: number;
   debtPaymentsClp: number;
+  /** Ingresos − reserva − todo lo comprometido (pagado o no). */
+  afterPayingAllClp: number;
 }
 
 export function lineOutflowClp(line: PlanillaLine, sharedIds: Set<string>, people: number): number {
@@ -84,14 +86,26 @@ export function computeSharedSplitTotals(planilla: MonthPlanilla): {
   return { selectedTotalClp, yourPartClp };
 }
 
-export function computeMonthTotals(planilla: MonthPlanilla): MonthTotals {
+export function debtPaymentOutflowClp(line: DebtPaymentLine, debtBalanceClp: number): number {
+  if (line.paymentKind === 'full') return Math.max(0, debtBalanceClp);
+  return Math.max(0, Math.min(line.amountClp, debtBalanceClp));
+}
+
+export function computeMonthTotals(
+  planilla: MonthPlanilla,
+  debtBalances: Record<string, number> = {},
+): MonthTotals {
   const sharedIds = new Set(planilla.sharedSplitLineIds);
   const people = Math.max(1, planilla.sharedSplitPeople);
 
   const totalFixedClp = planilla.fixedLines.reduce((s, l) => s + l.amountClp, 0);
   const totalAdditionalClp = planilla.additionalLines.reduce((s, l) => s + l.amountClp, 0);
-  const debtPaymentsClp = planilla.debtPaymentLines.reduce((s, l) => s + l.amountClp, 0);
-  const fondosMenosGastosClp = planilla.incomeClp - totalFixedClp - totalAdditionalClp - debtPaymentsClp;
+
+  let debtPaymentsClp = 0;
+  for (const line of planilla.debtPaymentLines) {
+    const balance = debtBalances[line.debtId] ?? line.amountClp;
+    debtPaymentsClp += debtPaymentOutflowClp(line, balance);
+  }
 
   const shared = computeSharedSplitTotals(planilla);
 
@@ -115,12 +129,17 @@ export function computeMonthTotals(planilla: MonthPlanilla): MonthTotals {
     if (line.paid) paidSoFarClp += lineOutflowClp(line, sharedIds, people);
   }
   for (const line of planilla.debtPaymentLines) {
-    if (line.paid && line.amountClp > 0) paidSoFarClp += line.amountClp;
+    if (!line.paid) continue;
+    const balance = debtBalances[line.debtId] ?? line.amountClp;
+    paidSoFarClp += debtPaymentOutflowClp(line, balance);
   }
 
   const fundTotalClp = planilla.incomeClp;
   const availableClp = fundTotalClp - paidSoFarClp;
   const pendingOutflowsClp = Math.max(0, allOutflowsClp - paidSoFarClp);
+  /** Disponible real: ingresos menos solo lo ya pagado. */
+  const fondosMenosGastosClp = availableClp;
+  const afterPayingAllClp = planilla.incomeClp - allOutflowsClp - planilla.reserveClp;
 
   return {
     totalFixedClp,
@@ -132,12 +151,13 @@ export function computeMonthTotals(planilla: MonthPlanilla): MonthTotals {
     householdYourShareClp,
     reserveClp: planilla.reserveClp,
     allOutflowsClp,
-    surplusAfterReserveClp: planilla.incomeClp - allOutflowsClp - planilla.reserveClp,
+    surplusAfterReserveClp: afterPayingAllClp,
     fundTotalClp,
     paidSoFarClp,
     availableClp,
     pendingOutflowsClp,
     debtPaymentsClp,
+    afterPayingAllClp,
   };
 }
 

@@ -194,7 +194,7 @@ export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): P
 
 export async function revertMonthDebtPayments(db: SQLiteDatabase, monthKey: string): Promise<void> {
   const rows = await db.getAllAsync<TransactionRow>(
-    `SELECT * FROM transactions WHERE month_key = ? AND kind = 'debt_payment'`,
+    `SELECT * FROM transactions WHERE month_key = ? AND kind = 'debt_payment' AND is_paid = 1`,
     monthKey,
   );
   for (const row of rows) {
@@ -339,8 +339,10 @@ export async function saveMonthPlanilla(
         isPaid: line.paid,
       });
 
-      resolvedPayments.push({ debtId: line.debtId, amountClp: amount });
-      working[line.debtId] = balance - amount;
+      if (line.paid) {
+        resolvedPayments.push({ debtId: line.debtId, amountClp: amount });
+        working[line.debtId] = balance - amount;
+      }
     }
   }
 
@@ -352,7 +354,8 @@ export async function saveMonthPlanilla(
 export async function buildMonthlyLedger(db: SQLiteDatabase, monthKey: string): Promise<MonthlyLedger> {
   const opening = Number.parseInt((await getSetting(db, `opening:${monthKey}`)) ?? '0', 10);
   const planilla = await loadMonthPlanilla(db, monthKey);
-  const totals = computeMonthTotals(planilla);
+  const debtBalances = await getDebtBalances(db);
+  const totals = computeMonthTotals(planilla, debtBalances);
 
   return {
     openingBalanceClp: opening,
@@ -374,7 +377,8 @@ export async function buildMonthCompare(db: SQLiteDatabase): Promise<MonthCompar
   const points: MonthComparePoint[] = [];
   for (const monthKey of sortMonthKeysAsc(keys)) {
     const planilla = await loadMonthPlanilla(db, monthKey);
-    const totals = computeMonthTotals(planilla);
+    const debtBalances = await getDebtBalances(db);
+    const totals = computeMonthTotals(planilla, debtBalances);
     points.push({
       monthKey,
       label: monthKeyToLabel(monthKey),

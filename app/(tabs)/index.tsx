@@ -70,7 +70,7 @@ export default function PanelScreen() {
       <Card>
         <SectionTitle>Fondos menos gastos</SectionTitle>
         <MoneyText amountClp={ledger.fondosMenosGastosClp} large />
-        <BodyText muted>Ingresos menos fijos y adicionales (como tu Excel).</BodyText>
+        <BodyText muted>Ingresos − ítems ya pagados en planilla.</BodyText>
       </Card>
 
       {ledger.reserveClp > 0 ? (

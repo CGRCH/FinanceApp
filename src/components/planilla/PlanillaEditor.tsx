@@ -55,22 +55,33 @@ function EditableLineRow({
   const colors = useThemeColors();
   return (
     <View style={styles.lineCard}>
-      <View style={styles.lineHeaderRow}>
+      <View style={styles.lineMainRow}>
         {categoryEditable && !readOnly ? (
-        <TextInput
-          value={line.category}
-          onChangeText={onCategoryChange}
+          <TextInput
+            value={line.category}
+            onChangeText={onCategoryChange}
+            editable={!readOnly}
+            placeholder="Nombre"
+            placeholderTextColor={colors.textSecondary}
+            style={[
+              styles.categoryInputCompact,
+              { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
+            ]}
+          />
+        ) : (
+          <Text style={[styles.lineTitle, { color: colors.text }]} numberOfLines={1}>
+            {line.category}
+          </Text>
+        )}
+        <ClpInput
+          amountClp={line.amountClp}
+          onChangeAmount={onAmountChange}
+          style={styles.amountCompact}
           editable={!readOnly}
-          placeholder="Nombre del ítem"
-          placeholderTextColor={colors.textSecondary}
-          style={[styles.categoryInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
         />
-      ) : (
-        <Text style={[styles.lineTitle, { color: colors.text, flex: 1 }]}>{line.category}</Text>
-      )}
         {showPaidToggle ? (
-          <View style={styles.paidToggle}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>Pagado</Text>
+          <View style={styles.paidInline}>
+            <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600' }}>Pagado</Text>
             <Switch
               value={!!line.paid}
               disabled={readOnly}
@@ -79,9 +90,6 @@ function EditableLineRow({
             />
           </View>
         ) : null}
-      </View>
-      <View style={styles.lineAmountRow}>
-        <ClpInput amountClp={line.amountClp} onChangeAmount={onAmountChange} style={{ flex: 1 }} editable={!readOnly} />
         {onRemove && !readOnly ? (
           <Pressable onPress={onRemove} accessibilityLabel="Eliminar ítem" style={styles.removeBtn}>
             <Text style={{ color: colors.danger, fontWeight: '800' }}>✕</Text>
@@ -105,7 +113,15 @@ export function PlanillaEditor({ monthKey }: Props) {
     listDebts(db).then(setDebts);
   }, [db, monthKey]);
 
-  const totals = useMemo(() => (planilla ? computeMonthTotals(planilla) : null), [planilla]);
+  const debtBalances = useMemo(
+    () => Object.fromEntries(debts.map((d) => [d.id, d.balance_clp])),
+    [debts],
+  );
+
+  const totals = useMemo(
+    () => (planilla ? computeMonthTotals(planilla, debtBalances) : null),
+    [planilla, debtBalances],
+  );
   const shared = useMemo(() => (planilla ? computeSharedSplitTotals(planilla) : null), [planilla]);
   const editable = isMonthEditable(monthKey);
   const editMode = monthEditability(monthKey);
@@ -174,20 +190,13 @@ export function PlanillaEditor({ monthKey }: Props) {
       <Card style={{ backgroundColor: colors.surfaceMuted, borderColor: colors.border }}>
         <SectionTitle>Fondo del mes</SectionTitle>
         <View style={styles.fundRow}>
-          <Text style={{ color: colors.textSecondary }}>Fondo total</Text>
+          <Text style={{ color: colors.textSecondary }}>Fondo total (ingresos)</Text>
           <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.fundTotalClp)}</Text>
         </View>
         <View style={styles.fundRow}>
           <Text style={{ color: colors.textSecondary }}>Pagado hasta ahora</Text>
           <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.paidSoFarClp)}</Text>
         </View>
-        <View style={styles.fundRow}>
-          <Text style={{ color: colors.primary, fontWeight: '700' }}>Disponible</Text>
-          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
-            {formatClp(totals.availableClp)}
-          </Text>
-        </View>
-        <BodyText muted>Pendiente por pagar: {formatClp(totals.pendingOutflowsClp)}</BodyText>
       </Card>
 
       <Card>
@@ -309,13 +318,21 @@ export function PlanillaEditor({ monthKey }: Props) {
       <Card style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
         <SectionTitle>Fondos menos gastos</SectionTitle>
         <MoneyText amountClp={totals.fondosMenosGastosClp} large />
-        <BodyText muted>Ingresos − fijos − adicionales − pagos de deudas.</BodyText>
+        <BodyText muted>Ingresos − solo ítems marcados como pagados (disponible real).</BodyText>
+        <View style={[styles.fundRow, { marginTop: spacing.sm }]}>
+          <Text style={{ color: colors.textSecondary }}>Pendiente por pagar</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.pendingOutflowsClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Quedaría después de pagar todo</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.afterPayingAllClp)}</Text>
+        </View>
       </Card>
 
       {editable ? (
         <Card>
           <SectionTitle>Pagos de deudas</SectionTitle>
-          <BodyText muted>Elegí deuda, pago total o abono parcial. Al guardar se descuenta del saldo.</BodyText>
+          <BodyText muted>Elegí deuda, pago total o abono parcial. El saldo de la deuda baja solo si marcás Pagado y guardás.</BodyText>
           {planilla.debtPaymentLines.map((line, i) => {
             const debt = debts.find((d) => d.id === line.debtId);
             return (
@@ -531,7 +548,20 @@ const styles = StyleSheet.create({
   },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: spacing.xs },
-  lineCard: { marginBottom: spacing.sm, gap: spacing.xs },
+  lineCard: { marginBottom: spacing.sm },
+  lineMainRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  paidInline: { alignItems: 'center', gap: 0, minWidth: 56 },
+  categoryInputCompact: {
+    flex: 1,
+    minWidth: 72,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  amountCompact: { width: 118, minWidth: 118 },
   lineHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   paidToggle: { alignItems: 'center', gap: 2 },
   fundRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
