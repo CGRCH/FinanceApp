@@ -345,24 +345,6 @@ export function PlanillaEditor({ monthKey }: Props) {
         <BodyText muted>Total registrado: {formatClp(totals.totalAdditionalClp)}</BodyText>
       </Card>
 
-      <Card style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
-        <SectionTitle>Fondos menos gastos</SectionTitle>
-        <MoneyText amountClp={totals.fondosMenosGastosClp} large />
-        <BodyText muted>Ingresos − solo ítems marcados como pagados (disponible real).</BodyText>
-        <View style={[styles.fundRow, { marginTop: spacing.sm }]}>
-          <Text style={{ color: colors.textSecondary }}>Pendiente por pagar</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.pendingOutflowsClp)}</Text>
-        </View>
-        <View style={styles.fundRow}>
-          <Text style={{ color: colors.textSecondary }}>Quedaría después de pagar todo</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.afterPayingAllClp)}</Text>
-        </View>
-        <BodyText muted>
-          La reserva ({formatClp(planilla.reserveClp)}) se resta solo al cerrar todo, no entra en “pendiente”.
-        </BodyText>
-        {breakdown ? <PlanillaCalculationBreakdown breakdown={breakdown} /> : null}
-      </Card>
-
       {editable ? (
         <Card>
           <SectionTitle>Pagos de deudas</SectionTitle>
@@ -559,6 +541,24 @@ export function PlanillaEditor({ monthKey }: Props) {
         <BodyText muted>
           Suma registrada (montos ingresados + hogar + deudas). Dividir cuentas no reduce Pagado/Disponible.
         </BodyText>
+      </Card>
+
+      <Card style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
+        <SectionTitle>Fondos menos gastos</SectionTitle>
+        <MoneyText amountClp={totals.fondosMenosGastosClp} large />
+        <BodyText muted>Ingresos − solo ítems marcados como pagados (disponible real).</BodyText>
+        <View style={[styles.fundRow, { marginTop: spacing.sm }]}>
+          <Text style={{ color: colors.textSecondary }}>Pendiente por pagar</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.pendingOutflowsClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Quedaría después de pagar todo</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.afterPayingAllClp)}</Text>
+        </View>
+        <BodyText muted>
+          La reserva ({formatClp(planilla.reserveClp)}) se resta solo al cerrar todo, no entra en “pendiente”.
+        </BodyText>
+        {breakdown ? <PlanillaCalculationBreakdown breakdown={breakdown} /> : null}
       </Card>
 
       {editable ? (
