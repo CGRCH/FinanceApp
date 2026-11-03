@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/components/planilla/**/*.tsx",
+    "src/components/planilla/**/*.ts",
+    "src/components/settings/**/*.tsx",
+    "src/domain/**/*.ts",
+    "src/db/repository.ts",
+    "src/db/schema.ts",
+    "src/db/migrate.ts",
+    "src/context/FinanceContext.tsx"
+  ],
+  "exclude": ["**/__tests__/**", "scripts/**"]
+}

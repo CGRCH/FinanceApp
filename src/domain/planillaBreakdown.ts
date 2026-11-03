@@ -71,21 +71,21 @@ function debtRows(
   debtBalances: Record<string, number>,
   debtNames: Record<string, string>,
 ): BreakdownRow[] {
-  return lines
-    .map((l) => {
-      const balance = debtBalances[l.debtId] ?? l.amountClp;
-      const committed = debtPaymentOutflowClp(l, balance);
-      if (committed <= 0) return null;
-      return {
-        id: l.id,
-        group: 'debt_payment' as const,
-        label: debtNames[l.debtId] ?? 'Pago de deuda',
-        committedClp: committed,
-        paid: !!l.paid,
-        note: l.paymentKind === 'full' ? 'Pago total' : 'Abono',
-      };
-    })
-    .filter((r): r is BreakdownRow => r != null);
+  const rows: BreakdownRow[] = [];
+  for (const l of lines) {
+    const balance = debtBalances[l.debtId] ?? l.amountClp;
+    const committed = debtPaymentOutflowClp(l, balance);
+    if (committed <= 0) continue;
+    rows.push({
+      id: l.id,
+      group: 'debt_payment',
+      label: debtNames[l.debtId] ?? 'Pago de deuda',
+      committedClp: committed,
+      paid: !!l.paid,
+      note: l.paymentKind === 'full' ? 'Pago total' : 'Abono',
+    });
+  }
+  return rows;
 }
 
 export function computePlanillaBreakdown(
