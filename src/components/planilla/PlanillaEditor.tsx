@@ -205,6 +205,26 @@ export function PlanillaEditor({ monthKey }: Props) {
         </View>
       ) : null}
 
+      <Card style={{ backgroundColor: colors.surfaceMuted, borderColor: colors.border }}>
+        <SectionTitle>Fondo del mes</SectionTitle>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Fondo total (ingresos)</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.fundTotalClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Pagado hasta ahora</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.paidSoFarClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Disponible</Text>
+          <Text style={{ color: colors.primary, fontWeight: '800' }}>{formatClp(totals.availableClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Pendiente (sin pagar)</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.pendingOutflowsClp)}</Text>
+        </View>
+      </Card>
+
       <Card>
         <SectionTitle>Ingresos</SectionTitle>
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Total del mes</Text>
@@ -325,64 +345,22 @@ export function PlanillaEditor({ monthKey }: Props) {
         <BodyText muted>Total registrado: {formatClp(totals.totalAdditionalClp)}</BodyText>
       </Card>
 
-      <Card>
-        <SectionTitle>Dividir cuentas</SectionTitle>
-        <BodyText muted>Elegí qué ítems ya ingresados se reparten y entre cuántas personas.</BodyText>
-        <View style={styles.stepperRow}>
-          <Text style={{ color: colors.text, fontWeight: '700' }}>Personas</Text>
-          <View style={styles.stepper}>
-            <Pressable
-              disabled={!editable}
-              onPress={() =>
-                editable &&
-                setPlanilla({
-                  ...planilla,
-                  sharedSplitPeople: Math.max(2, planilla.sharedSplitPeople - 1),
-                })
-              }
-              style={[styles.stepBtn, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.text, fontSize: 20 }}>−</Text>
-            </Pressable>
-            <Text style={[styles.stepValue, { color: colors.text }]}>{planilla.sharedSplitPeople}</Text>
-            <Pressable
-              disabled={!editable}
-              onPress={() =>
-                editable && setPlanilla({ ...planilla, sharedSplitPeople: planilla.sharedSplitPeople + 1 })
-              }
-              style={[styles.stepBtn, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.text, fontSize: 20 }}>+</Text>
-            </Pressable>
-          </View>
+      <Card style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
+        <SectionTitle>Fondos menos gastos</SectionTitle>
+        <MoneyText amountClp={totals.fondosMenosGastosClp} large />
+        <BodyText muted>Ingresos − solo ítems marcados como pagados (disponible real).</BodyText>
+        <View style={[styles.fundRow, { marginTop: spacing.sm }]}>
+          <Text style={{ color: colors.textSecondary }}>Pendiente por pagar</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.pendingOutflowsClp)}</Text>
         </View>
-        {splittableLines.length === 0 ? (
-          <BodyText muted>Agregá montos en fijos o adicionales para poder dividirlos.</BodyText>
-        ) : (
-          splittableLines.map((line) => {
-            const on = planilla.sharedSplitLineIds.includes(line.id);
-            return (
-              <View key={line.id} style={[styles.splitRow, { borderColor: colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: '600' }}>{line.category}</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{formatClp(line.amountClp)}</Text>
-                </View>
-                <Switch
-                  value={on}
-                  disabled={!editable}
-                  onValueChange={(v) => toggleSharedLine(line.id, v)}
-                  accessibilityLabel={`Dividir ${line.category}`}
-                />
-              </View>
-            );
-          })
-        )}
-        <View style={[styles.splitSummary, { backgroundColor: colors.surfaceMuted }]}>
-          <Text style={{ color: colors.textSecondary }}>Total seleccionado</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(shared.selectedTotalClp)}</Text>
-          <Text style={{ color: colors.textSecondary, marginTop: spacing.sm }}>Tu parte</Text>
-          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
-            {formatClp(shared.yourPartClp)}
-          </Text>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Quedaría después de pagar todo</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.afterPayingAllClp)}</Text>
         </View>
+        <BodyText muted>
+          La reserva ({formatClp(planilla.reserveClp)}) se resta solo al cerrar todo, no entra en “pendiente”.
+        </BodyText>
+        {breakdown ? <PlanillaCalculationBreakdown breakdown={breakdown} /> : null}
       </Card>
 
       {editable ? (
@@ -515,39 +493,72 @@ export function PlanillaEditor({ monthKey }: Props) {
         />
       </Card>
 
-      <Card style={{ backgroundColor: colors.surfaceMuted, borderColor: colors.primary, borderWidth: 2 }}>
-        <SectionTitle>Fondo del mes</SectionTitle>
-        <View style={styles.fundRow}>
-          <Text style={{ color: colors.textSecondary }}>Fondo total (ingresos)</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.fundTotalClp)}</Text>
+      <Card>
+        <SectionTitle>Dividir cuentas</SectionTitle>
+        <BodyText muted>Elegí qué ítems ya ingresados se reparten y entre cuántas personas.</BodyText>
+        <View style={styles.stepperRow}>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>Personas</Text>
+          <View style={styles.stepper}>
+            <Pressable
+              disabled={!editable}
+              onPress={() =>
+                editable &&
+                setPlanilla({
+                  ...planilla,
+                  sharedSplitPeople: Math.max(2, planilla.sharedSplitPeople - 1),
+                })
+              }
+              style={[styles.stepBtn, { borderColor: colors.border }]}>
+              <Text style={{ color: colors.text, fontSize: 20 }}>−</Text>
+            </Pressable>
+            <Text style={[styles.stepValue, { color: colors.text }]}>{planilla.sharedSplitPeople}</Text>
+            <Pressable
+              disabled={!editable}
+              onPress={() =>
+                editable && setPlanilla({ ...planilla, sharedSplitPeople: planilla.sharedSplitPeople + 1 })
+              }
+              style={[styles.stepBtn, { borderColor: colors.border }]}>
+              <Text style={{ color: colors.text, fontSize: 20 }}>+</Text>
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.fundRow}>
-          <Text style={{ color: colors.textSecondary }}>Pagado hasta ahora</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.paidSoFarClp)}</Text>
+        {splittableLines.length === 0 ? (
+          <BodyText muted>Agregá montos en fijos o adicionales para poder dividirlos.</BodyText>
+        ) : (
+          splittableLines.map((line) => {
+            const on = planilla.sharedSplitLineIds.includes(line.id);
+            return (
+              <View key={line.id} style={[styles.splitRow, { borderColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>{line.category}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{formatClp(line.amountClp)}</Text>
+                </View>
+                <Switch
+                  value={on}
+                  disabled={!editable}
+                  onValueChange={(v) => toggleSharedLine(line.id, v)}
+                  accessibilityLabel={`Dividir ${line.category}`}
+                />
+              </View>
+            );
+          })
+        )}
+        <View style={[styles.splitSummary, { backgroundColor: colors.surfaceMuted }]}>
+          <Text style={{ color: colors.textSecondary }}>Total seleccionado</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(shared.selectedTotalClp)}</Text>
+          <Text style={{ color: colors.textSecondary, marginTop: spacing.sm }}>Tu parte</Text>
+          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
+            {formatClp(shared.yourPartClp)}
+          </Text>
         </View>
-        <View style={styles.fundRow}>
-          <Text style={{ color: colors.textSecondary }}>Pendiente (sin pagar)</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.pendingOutflowsClp)}</Text>
-        </View>
-        <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-        <Text style={{ color: colors.textSecondary, fontWeight: '600', marginBottom: spacing.xs }}>
-          Disponible (fondos menos gastos)
-        </Text>
-        <MoneyText amountClp={totals.availableClp} large />
-        <BodyText muted>Ingresos − solo ítems marcados como pagados.</BodyText>
-        <View style={[styles.fundRow, { marginTop: spacing.sm }]}>
-          <Text style={{ color: colors.textSecondary }}>Total registrado del mes</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.allOutflowsClp)}</Text>
-        </View>
-        <View style={styles.fundRow}>
-          <Text style={{ color: colors.textSecondary }}>Quedaría después de pagar todo</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.afterPayingAllClp)}</Text>
-        </View>
+      </Card>
+
+      <Card style={{ backgroundColor: colors.primarySoft, borderColor: colors.primary }}>
+        <SectionTitle>Tu gasto del mes</SectionTitle>
+        <MoneyText amountClp={totals.allOutflowsClp} large />
         <BodyText muted>
-          La reserva ({formatClp(planilla.reserveClp)}) se resta solo al cerrar todo, no entra en “pendiente”. Dividir
-          cuentas no altera Disponible.
+          Suma registrada (montos ingresados + hogar + deudas). Dividir cuentas no reduce Pagado/Disponible.
         </BodyText>
-        {breakdown ? <PlanillaCalculationBreakdown breakdown={breakdown} /> : null}
       </Card>
 
       {editable ? (
@@ -590,7 +601,6 @@ const styles = StyleSheet.create({
   lineHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   paidToggle: { alignItems: 'center', gap: 2 },
   fundRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
-  summaryDivider: { height: StyleSheet.hairlineWidth, marginVertical: spacing.sm },
   debtPayCard: { borderWidth: 1, borderRadius: radii.md, padding: spacing.sm, gap: spacing.sm, marginBottom: spacing.sm },
   debtChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   debtChip: { borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 6 },
