@@ -1,8 +1,9 @@
 import { yourShareClp } from './sharedExpenses';
+import { formatClp } from './money';
 import {
   computeMonthTotals,
   debtPaymentOutflowClp,
-  lineOutflowClp,
+  lineEnteredClp,
   type DebtPaymentLine,
   type MonthPlanilla,
   type MonthTotals,
@@ -15,7 +16,7 @@ export interface BreakdownRow {
   id: string;
   group: BreakdownGroup;
   label: string;
-  /** Monto que te afecta (tu parte si es compartido). */
+  /** Monto ingresado en planilla (Pagado / Pendiente usan el total, no la parte dividida). */
   committedClp: number;
   paid: boolean;
   note?: string;
@@ -49,15 +50,18 @@ function lineRows(
   return lines
     .filter((l) => l.amountClp > 0 || l.category.trim())
     .map((l) => {
-      const committed = lineOutflowClp(l, sharedIds, people);
+      const committed = lineEnteredClp(l);
       const shared = sharedIds.has(l.id) && l.amountClp > 0;
+      const shareClp = shared ? yourShareClp(l.amountClp, people) : 0;
       return {
         id: l.id,
         group,
         label: l.category.trim() || 'Ítem',
         committedClp: committed,
         paid: !!l.paid,
-        note: shared ? `Tu parte (${people} pers.)` : undefined,
+        note: shared
+          ? `tu parte: ${formatClp(shareClp)} (÷${people})`
+          : undefined,
       };
     })
     .filter((r) => r.committedClp > 0);

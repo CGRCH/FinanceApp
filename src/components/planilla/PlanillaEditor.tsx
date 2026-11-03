@@ -16,6 +16,7 @@ import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Pri
 import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import { formatClp } from '@/src/domain/money';
+import { yourShareClp } from '@/src/domain/sharedExpenses';
 import {
   computeMonthTotals,
   computeSharedSplitTotals,
@@ -44,6 +45,8 @@ function EditableLineRow({
   readOnly,
   onPaidChange,
   showPaidToggle,
+  sharedSplitPeople,
+  isSharedSplit,
 }: {
   line: PlanillaLine;
   onCategoryChange?: (v: string) => void;
@@ -53,6 +56,8 @@ function EditableLineRow({
   readOnly?: boolean;
   onPaidChange?: (paid: boolean) => void;
   showPaidToggle?: boolean;
+  sharedSplitPeople?: number;
+  isSharedSplit?: boolean;
 }) {
   const colors = useThemeColors();
   return (
@@ -98,6 +103,11 @@ function EditableLineRow({
           </Pressable>
         ) : null}
       </View>
+      {isSharedSplit && line.amountClp > 0 && sharedSplitPeople && sharedSplitPeople > 1 ? (
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+          tu parte: {formatClp(yourShareClp(line.amountClp, sharedSplitPeople))} (÷{sharedSplitPeople})
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -205,6 +215,14 @@ export function PlanillaEditor({ monthKey }: Props) {
           <Text style={{ color: colors.textSecondary }}>Pagado hasta ahora</Text>
           <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.paidSoFarClp)}</Text>
         </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Disponible</Text>
+          <Text style={{ color: colors.primary, fontWeight: '800' }}>{formatClp(totals.availableClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Pendiente (sin pagar)</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.pendingOutflowsClp)}</Text>
+        </View>
       </Card>
 
       <Card>
@@ -251,6 +269,8 @@ export function PlanillaEditor({ monthKey }: Props) {
               fixedLines[i] = { ...line, paid };
               setPlanilla({ ...planilla, fixedLines });
             }}
+            isSharedSplit={planilla.sharedSplitLineIds.includes(line.id)}
+            sharedSplitPeople={planilla.sharedSplitPeople}
           />
         ))}
         {editable ? (
@@ -304,6 +324,8 @@ export function PlanillaEditor({ monthKey }: Props) {
               additionalLines[i] = { ...line, paid };
               setPlanilla({ ...planilla, additionalLines });
             }}
+            isSharedSplit={planilla.sharedSplitLineIds.includes(line.id)}
+            sharedSplitPeople={planilla.sharedSplitPeople}
           />
         ))}
         {editable ? (
@@ -534,7 +556,9 @@ export function PlanillaEditor({ monthKey }: Props) {
       <Card style={{ backgroundColor: colors.primarySoft, borderColor: colors.primary }}>
         <SectionTitle>Tu gasto del mes</SectionTitle>
         <MoneyText amountClp={totals.allOutflowsClp} large />
-        <BodyText muted>Incluye divisiones de cuentas. Después de reserva: {formatClp(totals.surplusAfterReserveClp)}</BodyText>
+        <BodyText muted>
+          Suma registrada (montos ingresados + hogar + deudas). Dividir cuentas no reduce Pagado/Disponible.
+        </BodyText>
       </Card>
 
       {editable ? (

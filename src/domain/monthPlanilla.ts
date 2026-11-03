@@ -69,6 +69,11 @@ export function lineOutflowClp(line: PlanillaLine, sharedIds: Set<string>, peopl
   return line.amountClp;
 }
 
+/** Monto ingresado en planilla (para Pagado / Disponible / Pendiente). */
+export function lineEnteredClp(line: PlanillaLine): number {
+  return line.amountClp > 0 ? line.amountClp : 0;
+}
+
 export function computeSharedSplitTotals(planilla: MonthPlanilla): {
   selectedTotalClp: number;
   yourPartClp: number;
@@ -95,9 +100,6 @@ export function computeMonthTotals(
   planilla: MonthPlanilla,
   debtBalances: Record<string, number> = {},
 ): MonthTotals {
-  const sharedIds = new Set(planilla.sharedSplitLineIds);
-  const people = Math.max(1, planilla.sharedSplitPeople);
-
   const totalFixedClp = planilla.fixedLines.reduce((s, l) => s + l.amountClp, 0);
   const totalAdditionalClp = planilla.additionalLines.reduce((s, l) => s + l.amountClp, 0);
 
@@ -109,9 +111,6 @@ export function computeMonthTotals(
 
   const shared = computeSharedSplitTotals(planilla);
 
-  const userFixed = planilla.fixedLines.reduce((s, l) => s + lineOutflowClp(l, sharedIds, people), 0);
-  const userAdditional = planilla.additionalLines.reduce((s, l) => s + lineOutflowClp(l, sharedIds, people), 0);
-
   const householdTotalClp = planilla.householdLines.reduce((s, l) => s + l.totalClp, 0);
   const hn = Math.max(1, planilla.householdSplitPeople);
   const householdYourShareClp = planilla.householdLines.reduce(
@@ -119,25 +118,37 @@ export function computeMonthTotals(
     0,
   );
 
-  const allOutflowsClp = userFixed + userAdditional + householdYourShareClp + debtPaymentsClp;
+  /** Total registrado en planilla (montos ingresados + deudas + hogar), sin dividir por compartidos. */
+  const allOutflowsClp =
+    totalFixedClp +
+    totalAdditionalClp +
+    householdYourShareClp +
+    debtPaymentsClp;
 
   let paidSoFarClp = 0;
+  let pendingOutflowsClp = 0;
   for (const line of planilla.fixedLines) {
-    if (line.paid) paidSoFarClp += lineOutflowClp(line, sharedIds, people);
+    const amt = lineEnteredClp(line);
+    if (amt <= 0) continue;
+    if (line.paid) paidSoFarClp += amt;
+    else pendingOutflowsClp += amt;
   }
   for (const line of planilla.additionalLines) {
-    if (line.paid) paidSoFarClp += lineOutflowClp(line, sharedIds, people);
+    const amt = lineEnteredClp(line);
+    if (amt <= 0) continue;
+    if (line.paid) paidSoFarClp += amt;
+    else pendingOutflowsClp += amt;
   }
   for (const line of planilla.debtPaymentLines) {
-    if (!line.paid) continue;
     const balance = debtBalances[line.debtId] ?? line.amountClp;
-    paidSoFarClp += debtPaymentOutflowClp(line, balance);
+    const amt = debtPaymentOutflowClp(line, balance);
+    if (amt <= 0) continue;
+    if (line.paid) paidSoFarClp += amt;
+    else pendingOutflowsClp += amt;
   }
 
   const fundTotalClp = planilla.incomeClp;
   const availableClp = fundTotalClp - paidSoFarClp;
-  const pendingOutflowsClp = Math.max(0, allOutflowsClp - paidSoFarClp);
-  /** Disponible real: ingresos menos solo lo ya pagado. */
   const fondosMenosGastosClp = availableClp;
   const afterPayingAllClp = planilla.incomeClp - allOutflowsClp - planilla.reserveClp;
 

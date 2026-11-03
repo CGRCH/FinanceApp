@@ -150,7 +150,26 @@ describe('month planilla totals', () => {
     expect(shared.selectedTotalClp).toBe(120_000);
     expect(shared.yourPartClp).toBe(40_000);
     const totals = computeMonthTotals(p);
-    expect(totals.allOutflowsClp).toBe(40_000);
+    expect(totals.allOutflowsClp).toBe(120_000);
+    expect(totals.paidSoFarClp).toBe(0);
+    expect(totals.pendingOutflowsClp).toBe(120_000);
+  });
+
+  it('bug captura: arriendo pagado cuenta monto completo aunque esté en Dividir cuentas', () => {
+    const p = emptyPlanilla('2026-11');
+    p.incomeClp = 1_000_000;
+    p.fixedLines = [
+      { id: 'arriendo', category: 'Arriendo', amountClp: 400_000, paid: true },
+      { id: 'cuentas', category: 'Cuentas básicas', amountClp: 85_000, paid: false },
+      { id: 'mas', category: 'Mas', amountClp: 30_000, paid: false },
+    ];
+    p.sharedSplitLineIds = ['arriendo'];
+    p.sharedSplitPeople = 2;
+    const t = computeMonthTotals(p);
+    expect(t.paidSoFarClp).toBe(400_000);
+    expect(t.availableClp).toBe(600_000);
+    expect(t.pendingOutflowsClp).toBe(115_000);
+    expect(t.fondosMenosGastosClp).toBe(600_000);
   });
 
   it('vincula categoría con deuda', () => {

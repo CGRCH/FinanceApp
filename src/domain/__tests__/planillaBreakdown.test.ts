@@ -19,11 +19,7 @@ describe('planilla breakdown identities', () => {
 
 describe('caso captura César (nov 2026 ficticio)', () => {
   /**
-   * Planilla demo + abono $1.200.000 sin pagar, reserva $0 en UI de prueba.
-   * Fijos (tu parte): 420k + 18k + 11.667 + 4k + 8.333 = 462.000
-   * Adicionales: 185.000 (ejemplo ajustado)
-   * Deuda: 1.200.000
-   * Total comprometido = 1.847.000
+   * Montos ingresados completos (Dividir cuentas solo informativo para Pagado/Disponible).
    */
   const buildCapturePlanilla = () => {
     const p = emptyPlanilla('2026-11');
@@ -55,12 +51,12 @@ describe('caso captura César (nov 2026 ficticio)', () => {
     const p = buildCapturePlanilla();
     const t = computeMonthTotals(p, { credito: 2_000_000 });
     expect(t.availableClp).toBe(1_450_000);
-    expect(t.pendingOutflowsClp).toBe(1_847_000);
-    expect(t.afterPayingAllClp).toBe(-397_000);
+    expect(t.pendingOutflowsClp).toBe(1_895_000);
+    expect(t.afterPayingAllClp).toBe(-445_000);
     expect(t.paidSoFarClp).toBe(0);
 
     const b = computePlanillaBreakdown(p, { credito: 2_000_000 }, { credito: 'Crédito consumo' });
-    expect(b.fixedPendingClp + b.additionalPendingClp + b.debtPendingClp).toBe(1_847_000);
+    expect(b.fixedPendingClp + b.additionalPendingClp + b.debtPendingClp).toBe(1_895_000);
     expect(b.debtPendingClp).toBe(1_200_000);
   });
 });

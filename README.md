@@ -31,7 +31,7 @@ npm start
 2. **Planilla del mes** — misma estructura que el Excel de César, todo editable en pantalla:
    - Selector de mes compacto (`‹ mes año ›`) en la parte superior (mobile-first; evita chips verticales en web).
    - Ingresos, gastos fijos y adicionales: agregar, renombrar o eliminar secciones e ítems; montos con **formato CLP** al salir del campo (p. ej. `$1.450.000`).
-   - **Dividir cuentas**: activá con toggle qué ítems ya cargados (luz, agua, internet, etc.) querés repartir, elegí entre cuántas personas (stepper ≥ 2); ves total seleccionado y **tu parte**, integrado en los totales del mes.
+   - **Dividir cuentas**: activá con toggle qué ítems repartir (sin preselección); elegí entre cuántas personas (stepper ≥ 2); ves total seleccionado y **tu parte** en fila (`tu parte: $X (÷N)`). No altera Pagado/Disponible.
    - **Pagos de deudas** (mes actual): elegí deuda, **pago total** o **abono**; al guardar se descuenta del saldo (reversible si quitás el pago y guardás de nuevo). Historial en pestaña Deudas.
    - **Ítems pagados**: toggle *Pagado* en fijos, adicionales y pagos de deuda → **Fondo total**, **Pagado hasta ahora**, **Disponible** y pendiente; el Panel usa el disponible.
    - **Cierre de meses**: solo el **mes actual** es editable; anteriores cerrados, futuros bloqueados. Navegación ‹ › / swipe sin resetear el mes vacío.

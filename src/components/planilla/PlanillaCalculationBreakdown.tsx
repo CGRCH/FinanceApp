@@ -129,7 +129,7 @@ export function PlanillaCalculationBreakdown({ breakdown }: Props) {
             colors={colors}
           />
           <Row
-            label="Total comprometido (tu parte + deudas)"
+            label="Total registrado (fijos + adicionales + hogar + deudas)"
             value={formatClp(t.allOutflowsClp)}
             muted
             colors={colors}
