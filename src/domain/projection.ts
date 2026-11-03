@@ -6,7 +6,8 @@ export interface MonthlyLedger {
   /** Parte individual hogar + legacy shared. */
   sharedExpensesClp: number;
   reserveClp: number;
-  fondosMenosGastosClp: number;
+  /** Gasto neto del usuario (con cuentas divididas). */
+  allOutflowsClp?: number;
 }
 
 export function totalExpensesClp(ledger: MonthlyLedger): number {
@@ -14,6 +15,9 @@ export function totalExpensesClp(ledger: MonthlyLedger): number {
 }
 
 export function monthBalanceClp(ledger: MonthlyLedger): number {
+  if (ledger.allOutflowsClp != null) {
+    return ledger.openingBalanceClp + ledger.incomeClp - ledger.allOutflowsClp - ledger.reserveClp;
+  }
   return (
     ledger.openingBalanceClp +
     ledger.incomeClp -

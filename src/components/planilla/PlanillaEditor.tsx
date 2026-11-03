@@ -4,16 +4,24 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
+import { ClpInput } from '@/src/components/planilla/ClpInput';
 import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
-import { formatClp, parseClpInput } from '@/src/domain/money';
-import { matchDebtIdForCategory, computeMonthTotals, type MonthPlanilla } from '@/src/domain/monthPlanilla';
+import { formatClp } from '@/src/domain/money';
+import {
+  computeMonthTotals,
+  computeSharedSplitTotals,
+  matchDebtIdForCategory,
+  type MonthPlanilla,
+  type PlanillaLine,
+} from '@/src/domain/monthPlanilla';
 import { listDebts, loadMonthPlanilla, saveMonthPlanilla } from '@/src/db/repository';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing, radii } from '@/src/theme/tokens';
@@ -23,43 +31,48 @@ interface Props {
   monthKey: string;
 }
 
-function LineEditor({
-  label,
-  amount,
-  onChangeAmount,
+function EditableLineRow({
+  line,
+  onCategoryChange,
+  onAmountChange,
   onRemove,
+  categoryEditable,
 }: {
-  label: string;
-  amount: string;
-  onChangeAmount: (v: string) => void;
+  line: PlanillaLine;
+  onCategoryChange?: (v: string) => void;
+  onAmountChange: (clp: number) => void;
   onRemove?: () => void;
+  categoryEditable?: boolean;
 }) {
   const colors = useThemeColors();
   return (
-    <View style={styles.lineRow}>
-      <Text style={[styles.lineLabel, { color: colors.text }]} numberOfLines={1}>
-        {label}
-      </Text>
-      <TextInput
-        value={amount}
-        onChangeText={onChangeAmount}
-        keyboardType="number-pad"
-        placeholder="0"
-        placeholderTextColor={colors.textSecondary}
-        style={[styles.lineInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
-      />
-      {onRemove ? (
-        <Pressable onPress={onRemove} accessibilityLabel={`Quitar ${label}`}>
-          <Text style={{ color: colors.danger, fontWeight: '700' }}>✕</Text>
-        </Pressable>
-      ) : null}
+    <View style={styles.lineCard}>
+      {categoryEditable ? (
+        <TextInput
+          value={line.category}
+          onChangeText={onCategoryChange}
+          placeholder="Nombre del ítem"
+          placeholderTextColor={colors.textSecondary}
+          style={[styles.categoryInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
+        />
+      ) : (
+        <Text style={[styles.lineTitle, { color: colors.text }]}>{line.category}</Text>
+      )}
+      <View style={styles.lineAmountRow}>
+        <ClpInput amountClp={line.amountClp} onChangeAmount={onAmountChange} style={{ flex: 1 }} />
+        {onRemove ? (
+          <Pressable onPress={onRemove} accessibilityLabel="Eliminar ítem" style={styles.removeBtn}>
+            <Text style={{ color: colors.danger, fontWeight: '800' }}>✕</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
 
 export function PlanillaEditor({ monthKey }: Props) {
   const db = useSQLiteContext();
-  const { refresh, monthKeys, refreshMonthIndex } = useFinance();
+  const { refresh, refreshMonthIndex } = useFinance();
   const colors = useThemeColors();
   const [planilla, setPlanilla] = useState<MonthPlanilla | null>(null);
   const [debts, setDebts] = useState<DebtRow[]>([]);
@@ -71,30 +84,20 @@ export function PlanillaEditor({ monthKey }: Props) {
   }, [db, monthKey]);
 
   const totals = useMemo(() => (planilla ? computeMonthTotals(planilla) : null), [planilla]);
+  const shared = useMemo(() => (planilla ? computeSharedSplitTotals(planilla) : null), [planilla]);
 
-  const updateFixed = (index: number, amount: string) => {
+  const toggleSharedLine = (lineId: string, enabled: boolean) => {
     if (!planilla) return;
-    const v = parseClpInput(amount) ?? 0;
-    const next = { ...planilla, fixedLines: [...planilla.fixedLines] };
-    next.fixedLines[index] = { ...next.fixedLines[index], amountClp: v };
-    setPlanilla(next);
+    const ids = new Set(planilla.sharedSplitLineIds);
+    if (enabled) ids.add(lineId);
+    else ids.delete(lineId);
+    setPlanilla({ ...planilla, sharedSplitLineIds: [...ids] });
   };
 
-  const updateAdditional = (index: number, field: 'category' | 'amount', value: string) => {
-    if (!planilla) return;
-    const next = { ...planilla, additionalLines: [...planilla.additionalLines] };
-    if (field === 'category') next.additionalLines[index].category = value;
-    else next.additionalLines[index].amountClp = parseClpInput(value) ?? 0;
-    setPlanilla(next);
-  };
-
-  const updateHousehold = (index: number, amount: string) => {
-    if (!planilla) return;
-    const v = parseClpInput(amount) ?? 0;
-    const next = { ...planilla, householdLines: [...planilla.householdLines] };
-    next.householdLines[index] = { ...next.householdLines[index], totalClp: v };
-    setPlanilla(next);
-  };
+  const splittableLines = useMemo(() => {
+    if (!planilla) return [];
+    return [...planilla.fixedLines, ...planilla.additionalLines].filter((l) => l.amountClp > 0);
+  }, [planilla]);
 
   const save = useCallback(async () => {
     if (!planilla) return;
@@ -118,9 +121,9 @@ export function PlanillaEditor({ monthKey }: Props) {
     }
   }, [planilla, db, debts, refresh, refreshMonthIndex]);
 
-  if (!planilla || !totals) {
+  if (!planilla || !totals || !shared) {
     return (
-      <View style={[styles.loading, { backgroundColor: colors.background }]}>
+      <View style={styles.loading}>
         <Text style={{ color: colors.textSecondary }}>Cargando planilla…</Text>
       </View>
     );
@@ -128,26 +131,45 @@ export function PlanillaEditor({ monthKey }: Props) {
 
   return (
     <ScrollView
-      style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
+      style={styles.scroll}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">
       <Card>
         <SectionTitle>Ingresos</SectionTitle>
-        <LineEditor
-          label="Total del mes"
-          amount={planilla.incomeClp ? String(planilla.incomeClp) : ''}
-          onChangeAmount={(v) => setPlanilla({ ...planilla, incomeClp: parseClpInput(v) ?? 0 })}
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Total del mes</Text>
+        <ClpInput
+          amountClp={planilla.incomeClp}
+          onChangeAmount={(v) => setPlanilla({ ...planilla, incomeClp: v })}
         />
       </Card>
 
       <Card>
         <SectionTitle>Gastos fijos</SectionTitle>
         {planilla.fixedLines.map((line, i) => (
-          <LineEditor
+          <EditableLineRow
             key={line.id}
-            label={line.category}
-            amount={line.amountClp ? String(line.amountClp) : ''}
-            onChangeAmount={(v) => updateFixed(i, v)}
+            line={line}
+            categoryEditable
+            onCategoryChange={(v) => {
+              const fixedLines = [...planilla.fixedLines];
+              fixedLines[i] = { ...line, category: v };
+              setPlanilla({ ...planilla, fixedLines });
+            }}
+            onAmountChange={(v) => {
+              const fixedLines = [...planilla.fixedLines];
+              fixedLines[i] = { ...line, amountClp: v };
+              setPlanilla({ ...planilla, fixedLines });
+            }}
+            onRemove={
+              planilla.fixedLines.length > 1
+                ? () =>
+                    setPlanilla({
+                      ...planilla,
+                      fixedLines: planilla.fixedLines.filter((_, idx) => idx !== i),
+                      sharedSplitLineIds: planilla.sharedSplitLineIds.filter((id) => id !== line.id),
+                    })
+                : undefined
+            }
           />
         ))}
         <Pressable
@@ -160,9 +182,9 @@ export function PlanillaEditor({ monthKey }: Props) {
               ],
             })
           }>
-          <Text style={{ color: colors.primary, fontWeight: '700' }}>+ Agregar ítem fijo</Text>
+          <Text style={[styles.link, { color: colors.primary }]}>+ Agregar ítem fijo</Text>
         </Pressable>
-        <BodyText muted>Total fijos: {formatClp(totals.totalFixedClp)}</BodyText>
+        <BodyText muted>Total registrado: {formatClp(totals.totalFixedClp)}</BodyText>
       </Card>
 
       <Card>
@@ -171,26 +193,28 @@ export function PlanillaEditor({ monthKey }: Props) {
           <BodyText muted>Diezmo, comida, pagos a deudas, imprevistos…</BodyText>
         ) : null}
         {planilla.additionalLines.map((line, i) => (
-          <View key={line.id} style={{ gap: 4, marginBottom: spacing.sm }}>
-            <TextInput
-              value={line.category}
-              onChangeText={(v) => updateAdditional(i, 'category', v)}
-              placeholder="Nombre"
-              placeholderTextColor={colors.textSecondary}
-              style={[styles.lineInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
-            />
-            <LineEditor
-              label="Monto"
-              amount={line.amountClp ? String(line.amountClp) : ''}
-              onChangeAmount={(v) => updateAdditional(i, 'amount', v)}
-              onRemove={() =>
-                setPlanilla({
-                  ...planilla,
-                  additionalLines: planilla.additionalLines.filter((_, idx) => idx !== i),
-                })
-              }
-            />
-          </View>
+          <EditableLineRow
+            key={line.id}
+            line={line}
+            categoryEditable
+            onCategoryChange={(v) => {
+              const additionalLines = [...planilla.additionalLines];
+              additionalLines[i] = { ...line, category: v };
+              setPlanilla({ ...planilla, additionalLines });
+            }}
+            onAmountChange={(v) => {
+              const additionalLines = [...planilla.additionalLines];
+              additionalLines[i] = { ...line, amountClp: v };
+              setPlanilla({ ...planilla, additionalLines });
+            }}
+            onRemove={() =>
+              setPlanilla({
+                ...planilla,
+                additionalLines: planilla.additionalLines.filter((_, idx) => idx !== i),
+                sharedSplitLineIds: planilla.sharedSplitLineIds.filter((id) => id !== line.id),
+              })
+            }
+          />
         ))}
         <Pressable
           onPress={() =>
@@ -202,48 +226,85 @@ export function PlanillaEditor({ monthKey }: Props) {
               ],
             })
           }>
-          <Text style={{ color: colors.primary, fontWeight: '700' }}>+ Agregar gasto adicional</Text>
+          <Text style={[styles.link, { color: colors.primary }]}>+ Agregar gasto adicional</Text>
         </Pressable>
-        <BodyText muted>Total adicionales: {formatClp(totals.totalAdditionalClp)}</BodyText>
+        <BodyText muted>Total registrado: {formatClp(totals.totalAdditionalClp)}</BodyText>
       </Card>
 
       <Card style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
         <SectionTitle>Fondos menos gastos</SectionTitle>
         <MoneyText amountClp={totals.fondosMenosGastosClp} large />
-        <BodyText muted>Ingresos − fijos − adicionales (como en tu Excel).</BodyText>
+        <BodyText muted>Ingresos − fijos − adicionales (como tu Excel).</BodyText>
       </Card>
 
       <Card>
         <SectionTitle>Reserva</SectionTitle>
-        <LineEditor
-          label="Monto reservado"
-          amount={planilla.reserveClp ? String(planilla.reserveClp) : ''}
-          onChangeAmount={(v) => setPlanilla({ ...planilla, reserveClp: parseClpInput(v) ?? 0 })}
+        <ClpInput
+          amountClp={planilla.reserveClp}
+          onChangeAmount={(v) => setPlanilla({ ...planilla, reserveClp: v })}
         />
       </Card>
 
       <Card>
-        <SectionTitle>Gastos del mes general (hogar)</SectionTitle>
-        <LineEditor
-          label="Dividir entre N personas"
-          amount={String(planilla.householdSplitPeople)}
-          onChangeAmount={(v) => {
-            const n = Number.parseInt(v, 10);
-            setPlanilla({ ...planilla, householdSplitPeople: n >= 1 ? n : 1 });
-          }}
-        />
-        {planilla.householdLines.map((line, i) => (
-          <LineEditor
-            key={line.id}
-            label={`${line.category} (total hogar)`}
-            amount={line.totalClp ? String(line.totalClp) : ''}
-            onChangeAmount={(v) => updateHousehold(i, v)}
-          />
-        ))}
-        <BodyText muted>
-          Total hogar: {formatClp(totals.householdTotalClp)} · Tu parte:{' '}
-          {formatClp(totals.householdYourShareClp)}
-        </BodyText>
+        <SectionTitle>Dividir cuentas</SectionTitle>
+        <BodyText muted>Elegí qué ítems ya ingresados se reparten y entre cuántas personas.</BodyText>
+        <View style={styles.stepperRow}>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>Personas</Text>
+          <View style={styles.stepper}>
+            <Pressable
+              onPress={() =>
+                setPlanilla({
+                  ...planilla,
+                  sharedSplitPeople: Math.max(2, planilla.sharedSplitPeople - 1),
+                })
+              }
+              style={[styles.stepBtn, { borderColor: colors.border }]}>
+              <Text style={{ color: colors.text, fontSize: 20 }}>−</Text>
+            </Pressable>
+            <Text style={[styles.stepValue, { color: colors.text }]}>{planilla.sharedSplitPeople}</Text>
+            <Pressable
+              onPress={() =>
+                setPlanilla({ ...planilla, sharedSplitPeople: planilla.sharedSplitPeople + 1 })
+              }
+              style={[styles.stepBtn, { borderColor: colors.border }]}>
+              <Text style={{ color: colors.text, fontSize: 20 }}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+        {splittableLines.length === 0 ? (
+          <BodyText muted>Agregá montos en fijos o adicionales para poder dividirlos.</BodyText>
+        ) : (
+          splittableLines.map((line) => {
+            const on = planilla.sharedSplitLineIds.includes(line.id);
+            return (
+              <View key={line.id} style={[styles.splitRow, { borderColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>{line.category}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{formatClp(line.amountClp)}</Text>
+                </View>
+                <Switch
+                  value={on}
+                  onValueChange={(v) => toggleSharedLine(line.id, v)}
+                  accessibilityLabel={`Dividir ${line.category}`}
+                />
+              </View>
+            );
+          })
+        )}
+        <View style={[styles.splitSummary, { backgroundColor: colors.surfaceMuted }]}>
+          <Text style={{ color: colors.textSecondary }}>Total seleccionado</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(shared.selectedTotalClp)}</Text>
+          <Text style={{ color: colors.textSecondary, marginTop: spacing.sm }}>Tu parte</Text>
+          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
+            {formatClp(shared.yourPartClp)}
+          </Text>
+        </View>
+      </Card>
+
+      <Card style={{ backgroundColor: colors.primarySoft, borderColor: colors.primary }}>
+        <SectionTitle>Tu gasto del mes</SectionTitle>
+        <MoneyText amountClp={totals.allOutflowsClp} large />
+        <BodyText muted>Incluye divisiones de cuentas. Después de reserva: {formatClp(totals.surplusAfterReserveClp)}</BodyText>
       </Card>
 
       <Pressable
@@ -252,29 +313,46 @@ export function PlanillaEditor({ monthKey }: Props) {
         style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}>
         <Text style={styles.saveBtnText}>{saving ? 'Guardando…' : 'Guardar planilla del mes'}</Text>
       </Pressable>
-
-      {monthKeys.length <= 1 ? (
-        <BodyText muted>Tip: importá tu Excel en Ajustes para cargar varios meses de una.</BodyText>
-      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  scroll: { flex: 1 },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  lineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
-  lineLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
-  lineInput: {
-    minWidth: 110,
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: spacing.xs },
+  lineCard: { marginBottom: spacing.sm, gap: spacing.xs },
+  lineTitle: { fontSize: 15, fontWeight: '700' },
+  categoryInput: {
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 8,
     fontSize: 15,
-    textAlign: 'right',
+    fontWeight: '600',
   },
+  lineAmountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  removeBtn: { padding: spacing.sm },
+  link: { fontWeight: '700', marginTop: spacing.xs, marginBottom: spacing.xs },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: spacing.sm },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepValue: { fontSize: 18, fontWeight: '800', minWidth: 28, textAlign: 'center' },
+  splitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.sm,
+  },
+  splitSummary: { borderRadius: radii.md, padding: spacing.md, marginTop: spacing.sm, gap: 2 },
   saveBtn: { borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });

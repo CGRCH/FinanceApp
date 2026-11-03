@@ -28,14 +28,12 @@ npm start
 ## Flujo de uso
 
 1. **Onboarding** — la app arranca **vacía**: elegís empezar en blanco, importar tu `.xlsx` o cargar datos de ejemplo (ficticios).
-2. **Planilla del mes** — misma estructura que el Excel de César:
-   - Ingresos
-   - Gastos fijos (plantilla Alquiler, Tlf, Luz, Agua, Internet + ítems editables)
-   - Gastos adicionales (ítems libres; pagos a deudas se vinculan al módulo Deudas al guardar)
-   - **Fondos menos gastos** (calculado)
-   - **Reserva**
-   - **Gastos del mes general** (total hogar ÷ N personas, N configurable)
-3. **Historial** — selector de meses, detalle y comparativa visual (ingresos, gastos, reserva).
+2. **Planilla del mes** — misma estructura que el Excel de César, todo editable en pantalla:
+   - Selector de mes compacto (`‹ mes año ›`) en la parte superior (mobile-first; evita chips verticales en web).
+   - Ingresos, gastos fijos y adicionales: agregar, renombrar o eliminar secciones e ítems; montos con **formato CLP** al salir del campo (p. ej. `$1.450.000`).
+   - **Dividir cuentas**: activá con toggle qué ítems ya cargados (luz, agua, internet, etc.) querés repartir, elegí entre cuántas personas (stepper ≥ 2); ves total seleccionado y **tu parte**, integrado en los totales del mes.
+   - **Fondos menos gastos**, **Reserva** y resumen **Tu gasto del mes** (calculados al guardar).
+3. **Historial** — tarjetas por mes con ingresos, gastos, saldo/reserva, indicadores de color y barras mini para leer de un vistazo.
 4. **Panel / Deudas / Consejos / Ajustes** — proyección, estrategias de pago, reglas locales, tema e import/export.
 
 ## Arquitectura
@@ -50,7 +48,7 @@ src/context/         FinanceProvider
 
 Persistencia:
 
-- `month_records` — ingresos, reserva y N del hogar por mes
+- `month_records` — ingresos, reserva, personas del reparto y IDs de líneas compartidas (`shared_split_*`, schema v3)
 - `transactions` — líneas fijas, adicionales y hogar
 - `debts` — saldos; al guardar planilla, abonos adicionales vinculados reducen la deuda
 

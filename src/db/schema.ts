@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const CREATE_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS settings (
@@ -10,6 +10,8 @@ export const CREATE_STATEMENTS = [
     income_clp INTEGER NOT NULL DEFAULT 0,
     reserve_clp INTEGER NOT NULL DEFAULT 0,
     household_split_people INTEGER NOT NULL DEFAULT 1,
+    shared_split_people INTEGER NOT NULL DEFAULT 2,
+    shared_line_ids TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL
   );`,
   `CREATE TABLE IF NOT EXISTS transactions (

@@ -67,6 +67,20 @@ async function ensureMonthRecordsTable(db: SQLiteDatabase): Promise<void> {
   );`);
 }
 
+async function ensureSharedSplitColumns(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'month_records'))) return;
+  try {
+    await db.execAsync('ALTER TABLE month_records ADD COLUMN shared_split_people INTEGER NOT NULL DEFAULT 2');
+  } catch {
+    /* existe */
+  }
+  try {
+    await db.execAsync("ALTER TABLE month_records ADD COLUMN shared_line_ids TEXT NOT NULL DEFAULT '[]'");
+  } catch {
+    /* existe */
+  }
+}
+
 async function ensureDebtIdColumn(db: SQLiteDatabase): Promise<void> {
   if (!(await tableExists(db, 'transactions'))) return;
   if (await columnExists(db, 'transactions', 'debt_id')) return;
@@ -158,6 +172,7 @@ export async function migrateSchema(db: SQLiteDatabase): Promise<void> {
 
   await db.withTransactionAsync(async () => {
     await ensureMonthRecordsTable(db);
+    await ensureSharedSplitColumns(db);
     await ensureDebtIdColumn(db);
 
     state = await readMigrationState(db);

@@ -6,9 +6,9 @@ import {
 } from '../migrate';
 
 describe('shouldRebuildTransactionsTable', () => {
-  it('no reconstruye si ya está en schema v2', () => {
+  it('no reconstruye si ya está en schema v3', () => {
     const state: MigrationState = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       hasTransactionsTable: true,
       hasTransactionsV2Table: false,
       transactionsHasDebtId: true,

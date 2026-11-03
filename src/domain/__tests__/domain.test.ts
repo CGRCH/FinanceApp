@@ -2,7 +2,7 @@ import { buildAdvice } from '../advice';
 import { compareStrategies, simulatePayoff } from '../debtStrategies';
 import { computeProjection, monthBalanceClp } from '../projection';
 import { yourShareClp } from '../sharedExpenses';
-import { computeMonthTotals, emptyPlanilla, matchDebtIdForCategory } from '../monthPlanilla';
+import { computeMonthTotals, computeSharedSplitTotals, emptyPlanilla, matchDebtIdForCategory } from '../monthPlanilla';
 import { createFictionalFixtureWorkbook, parseGestiónWorkbook } from '../xlsxGestión';
 
 describe('computeProjection', () => {
@@ -33,8 +33,9 @@ describe('monthBalanceClp', () => {
       sharedExpensesClp: 50_000,
       reserveClp: 80_000,
       fondosMenosGastosClp: 450_000,
+      allOutflowsClp: 520_000,
     });
-    expect(balance).toBe(320_000);
+    expect(balance).toBe(400_000);
   });
 });
 
@@ -88,12 +89,23 @@ describe('month planilla totals', () => {
     p.incomeClp = 1_000_000;
     p.fixedLines[0].amountClp = 400_000;
     p.additionalLines = [{ id: 'a', category: 'Comida', amountClp: 100_000 }];
-    p.householdLines[0].totalClp = 300_000;
-    p.householdSplitPeople = 3;
     p.reserveClp = 50_000;
     const t = computeMonthTotals(p);
     expect(t.fondosMenosGastosClp).toBe(500_000);
-    expect(t.householdYourShareClp).toBe(100_000);
+    expect(t.allOutflowsClp).toBe(500_000);
+  });
+
+  it('divide cuentas seleccionadas entre N personas', () => {
+    const p = emptyPlanilla('2026-10');
+    p.fixedLines[2].amountClp = 90_000;
+    p.fixedLines[3].amountClp = 30_000;
+    p.sharedSplitLineIds = [p.fixedLines[2].id, p.fixedLines[3].id];
+    p.sharedSplitPeople = 3;
+    const shared = computeSharedSplitTotals(p);
+    expect(shared.selectedTotalClp).toBe(120_000);
+    expect(shared.yourPartClp).toBe(40_000);
+    const totals = computeMonthTotals(p);
+    expect(totals.allOutflowsClp).toBe(40_000);
   });
 
   it('vincula categoría con deuda', () => {
