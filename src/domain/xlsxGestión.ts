@@ -32,6 +32,8 @@ export interface ImportedMonth {
   reserveClp?: number;
   householdExpenses?: ImportedMovement[];
   householdSplitPeople?: number;
+  /** Valor leído de la fila "Fondos menos gastos" del Excel (si existe). */
+  fondosMenosGastosFromSheet?: number;
 }
 
 export interface ImportedDebt {
@@ -136,6 +138,8 @@ function parseMonthColumn(rows: unknown[][], baseCol: number, year: number, mont
     }
 
     if (label.startsWith('fondos menos gastos')) {
+      const amount = toClp(row[baseCol + 1]);
+      if (amount !== null) result.fondosMenosGastosFromSheet = amount;
       continue;
     }
 

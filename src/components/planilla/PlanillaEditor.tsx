@@ -24,6 +24,8 @@ import {
   type MonthPlanilla,
   type PlanillaLine,
 } from '@/src/domain/monthPlanilla';
+import { computePlanillaBreakdown } from '@/src/domain/planillaBreakdown';
+import { PlanillaCalculationBreakdown } from '@/src/components/planilla/PlanillaCalculationBreakdown';
 import { listDebts, loadMonthPlanilla, saveMonthPlanilla } from '@/src/db/repository';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing, radii } from '@/src/theme/tokens';
@@ -118,10 +120,16 @@ export function PlanillaEditor({ monthKey }: Props) {
     [debts],
   );
 
-  const totals = useMemo(
-    () => (planilla ? computeMonthTotals(planilla, debtBalances) : null),
-    [planilla, debtBalances],
+  const debtNames = useMemo(
+    () => Object.fromEntries(debts.map((d) => [d.id, d.name])),
+    [debts],
   );
+
+  const breakdown = useMemo(
+    () => (planilla ? computePlanillaBreakdown(planilla, debtBalances, debtNames) : null),
+    [planilla, debtBalances, debtNames],
+  );
+  const totals = breakdown?.totals ?? null;
   const shared = useMemo(() => (planilla ? computeSharedSplitTotals(planilla) : null), [planilla]);
   const editable = isMonthEditable(monthKey);
   const editMode = monthEditability(monthKey);
@@ -327,6 +335,10 @@ export function PlanillaEditor({ monthKey }: Props) {
           <Text style={{ color: colors.textSecondary }}>Quedaría después de pagar todo</Text>
           <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.afterPayingAllClp)}</Text>
         </View>
+        <BodyText muted>
+          La reserva ({formatClp(planilla.reserveClp)}) se resta solo al cerrar todo, no entra en “pendiente”.
+        </BodyText>
+        {breakdown ? <PlanillaCalculationBreakdown breakdown={breakdown} /> : null}
       </Card>
 
       {editable ? (

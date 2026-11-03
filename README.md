@@ -38,6 +38,28 @@ npm start
 3. **Historial** — tarjetas resumen por mes; **detalle mes a mes** con el mismo navegador ‹ mes › (o swipe) además del listado.
 4. **Panel / Deudas / Consejos / Ajustes** — el **Panel** muestra el **Disponible** (ingresos − ítems marcados pagados en planilla). **Deudas**: CRUD completo, historial de abonos, bola de nieve/avalancha con saldos actuales. Consejos y tema/import en Ajustes.
 
+## Fórmulas de la planilla (verificables)
+
+Montos en **tu parte** cuando un ítem está en *Dividir cuentas* (monto ÷ personas, redondeo entero CLP).
+
+| Concepto | Fórmula |
+|----------|---------|
+| **Disponible / Fondos menos gastos (app)** | `Ingresos − suma(ítems con Pagado = true)` (fijos, adicionales, hogar, pagos de deuda; compartidos cuentan solo tu parte) |
+| **Pendiente por pagar** | `Total comprometido − pagado` (no incluye la reserva) |
+| **Total comprometido** | Suma de tu parte de fijos + adicionales + hogar + pagos de deuda cargados (pagados o no) |
+| **Quedaría después de pagar todo** | `Ingresos − total comprometido − reserva` |
+| **Excel clásico (import)** | `Fondos menos gastos = Ingresos − fijos − adicionales` (bruto, sin toggle Pagado ni pagos de deuda de la app) |
+
+Evitá **doble conteo**: un pago de deuda va en *Pagos de deudas*, no repitas el mismo monto como gasto adicional.
+
+En Planilla, **Ver cálculo** desglosa cada ítem. Validación contra tu `.xlsx` local:
+
+```bash
+npx tsx scripts/validate-excel-formulas.ts uploads/finanzas_cesar_2026.xlsx
+```
+
+(El archivo real no se commitea; el fixture ficticio de tests valida la misma lógica cuando la hoja trae fila *Fondos menos gastos*.)
+
 ## Arquitectura
 
 ```
