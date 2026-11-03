@@ -7,6 +7,7 @@ export type MigrationState = {
   hasTransactionsTable: boolean;
   hasTransactionsV2Table: boolean;
   transactionsHasDebtId: boolean;
+  transactionsHasIsPaid: boolean;
 };
 
 export function shouldRebuildTransactionsTable(state: MigrationState): boolean {
@@ -54,6 +55,9 @@ export async function readMigrationState(db: SQLiteDatabase): Promise<MigrationS
     transactionsHasDebtId: (await tableExists(db, 'transactions'))
       ? await columnExists(db, 'transactions', 'debt_id')
       : false,
+    transactionsHasIsPaid: (await tableExists(db, 'transactions'))
+      ? await columnExists(db, 'transactions', 'is_paid')
+      : false,
   };
 }
 
@@ -79,6 +83,81 @@ async function ensureSharedSplitColumns(db: SQLiteDatabase): Promise<void> {
   } catch {
     /* existe */
   }
+}
+
+async function ensureDebtsPaidOffColumn(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'debts'))) return;
+  try {
+    await db.execAsync('ALTER TABLE debts ADD COLUMN paid_off_at TEXT');
+  } catch {
+    /* existe */
+  }
+}
+
+async function ensureTransactionIsPaidColumn(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'transactions'))) return;
+  if (await columnExists(db, 'transactions', 'is_paid')) return;
+  try {
+    await db.execAsync('ALTER TABLE transactions ADD COLUMN is_paid INTEGER NOT NULL DEFAULT 0');
+  } catch {
+    /* en transición */
+  }
+}
+
+async function transactionsKindAllowsDebtPayment(db: SQLiteDatabase): Promise<boolean> {
+  if (!(await tableExists(db, 'transactions'))) return true;
+  const sqlRow = await db.getFirstAsync<{ sql: string }>(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='transactions'",
+  );
+  return sqlRow?.sql?.includes('debt_payment') ?? false;
+}
+
+async function rebuildTransactionsForV4(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'transactions'))) return;
+  if (await tableExists(db, 'transactions_v2')) {
+    await finishPartialTransactionsV2(db);
+    return;
+  }
+
+  const hasIsPaid = await columnExists(db, 'transactions', 'is_paid');
+
+  await db.execAsync(`CREATE TABLE transactions_v2 (
+    id TEXT PRIMARY KEY NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('income','expense')),
+    kind TEXT CHECK(kind IN ('fixed','additional','shared','household','debt_payment') OR kind IS NULL),
+    category TEXT NOT NULL,
+    amount_clp INTEGER NOT NULL,
+    total_amount_clp INTEGER,
+    split_people INTEGER,
+    debt_id TEXT,
+    month_key TEXT NOT NULL,
+    note TEXT,
+    is_paid INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );`);
+
+  if (hasIsPaid) {
+    await db.execAsync(`
+      INSERT INTO transactions_v2 (
+        id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, is_paid, created_at
+      )
+      SELECT
+        id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, is_paid, created_at
+      FROM transactions;
+    `);
+  } else {
+    await db.execAsync(`
+      INSERT INTO transactions_v2 (
+        id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, is_paid, created_at
+      )
+      SELECT
+        id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, 0, created_at
+      FROM transactions;
+    `);
+  }
+
+  await db.execAsync('DROP TABLE transactions');
+  await db.execAsync('ALTER TABLE transactions_v2 RENAME TO transactions');
 }
 
 async function ensureDebtIdColumn(db: SQLiteDatabase): Promise<void> {
@@ -173,11 +252,20 @@ export async function migrateSchema(db: SQLiteDatabase): Promise<void> {
   await db.withTransactionAsync(async () => {
     await ensureMonthRecordsTable(db);
     await ensureSharedSplitColumns(db);
+    await ensureDebtsPaidOffColumn(db);
+    await ensureTransactionIsPaidColumn(db);
     await ensureDebtIdColumn(db);
 
     state = await readMigrationState(db);
     if (shouldRebuildTransactionsTable(state)) {
       await rebuildTransactionsForV2(db);
+    }
+
+    if (state.schemaVersion < 4) {
+      const allowsDebtPayment = await transactionsKindAllowsDebtPayment(db);
+      if (!allowsDebtPayment || !state.transactionsHasIsPaid) {
+        await rebuildTransactionsForV4(db);
+      }
     }
 
     await setSchemaVersion(db, SCHEMA_VERSION);

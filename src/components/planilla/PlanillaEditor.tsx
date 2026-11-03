@@ -15,14 +15,15 @@ import { ClpInput } from '@/src/components/planilla/ClpInput';
 import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
+import { formatClp } from '@/src/domain/money';
 import {
   computeMonthTotals,
   computeSharedSplitTotals,
   matchDebtIdForCategory,
+  type DebtPaymentLine,
   type MonthPlanilla,
   type PlanillaLine,
 } from '@/src/domain/monthPlanilla';
-import { formatClp } from '@/src/domain/money';
 import { listDebts, loadMonthPlanilla, saveMonthPlanilla } from '@/src/db/repository';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing, radii } from '@/src/theme/tokens';
@@ -39,6 +40,8 @@ function EditableLineRow({
   onRemove,
   categoryEditable,
   readOnly,
+  onPaidChange,
+  showPaidToggle,
 }: {
   line: PlanillaLine;
   onCategoryChange?: (v: string) => void;
@@ -46,11 +49,14 @@ function EditableLineRow({
   onRemove?: () => void;
   categoryEditable?: boolean;
   readOnly?: boolean;
+  onPaidChange?: (paid: boolean) => void;
+  showPaidToggle?: boolean;
 }) {
   const colors = useThemeColors();
   return (
     <View style={styles.lineCard}>
-      {categoryEditable && !readOnly ? (
+      <View style={styles.lineHeaderRow}>
+        {categoryEditable && !readOnly ? (
         <TextInput
           value={line.category}
           onChangeText={onCategoryChange}
@@ -60,8 +66,20 @@ function EditableLineRow({
           style={[styles.categoryInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
         />
       ) : (
-        <Text style={[styles.lineTitle, { color: colors.text }]}>{line.category}</Text>
+        <Text style={[styles.lineTitle, { color: colors.text, flex: 1 }]}>{line.category}</Text>
       )}
+        {showPaidToggle ? (
+          <View style={styles.paidToggle}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>Pagado</Text>
+            <Switch
+              value={!!line.paid}
+              disabled={readOnly}
+              onValueChange={(v) => onPaidChange?.(v)}
+              accessibilityLabel={`Marcar ${line.category} como pagado`}
+            />
+          </View>
+        ) : null}
+      </View>
       <View style={styles.lineAmountRow}>
         <ClpInput amountClp={line.amountClp} onChangeAmount={onAmountChange} style={{ flex: 1 }} editable={!readOnly} />
         {onRemove && !readOnly ? (
@@ -104,6 +122,8 @@ export function PlanillaEditor({ monthKey }: Props) {
     if (!planilla) return [];
     return [...planilla.fixedLines, ...planilla.additionalLines].filter((l) => l.amountClp > 0);
   }, [planilla]);
+
+  const activeDebts = useMemo(() => debts.filter((d) => d.balance_clp > 0), [debts]);
 
   const save = useCallback(async () => {
     if (!planilla || !editable) return;
@@ -151,6 +171,25 @@ export function PlanillaEditor({ monthKey }: Props) {
         </View>
       ) : null}
 
+      <Card style={{ backgroundColor: colors.surfaceMuted, borderColor: colors.border }}>
+        <SectionTitle>Fondo del mes</SectionTitle>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Fondo total</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.fundTotalClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.textSecondary }}>Pagado hasta ahora</Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(totals.paidSoFarClp)}</Text>
+        </View>
+        <View style={styles.fundRow}>
+          <Text style={{ color: colors.primary, fontWeight: '700' }}>Disponible</Text>
+          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
+            {formatClp(totals.availableClp)}
+          </Text>
+        </View>
+        <BodyText muted>Pendiente por pagar: {formatClp(totals.pendingOutflowsClp)}</BodyText>
+      </Card>
+
       <Card>
         <SectionTitle>Ingresos</SectionTitle>
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Total del mes</Text>
@@ -189,6 +228,12 @@ export function PlanillaEditor({ monthKey }: Props) {
                     })
                 : undefined
             }
+            showPaidToggle
+            onPaidChange={(paid) => {
+              const fixedLines = [...planilla.fixedLines];
+              fixedLines[i] = { ...line, paid };
+              setPlanilla({ ...planilla, fixedLines });
+            }}
           />
         ))}
         {editable ? (
@@ -236,6 +281,12 @@ export function PlanillaEditor({ monthKey }: Props) {
                 sharedSplitLineIds: planilla.sharedSplitLineIds.filter((id) => id !== line.id),
               })
             }
+            showPaidToggle
+            onPaidChange={(paid) => {
+              const additionalLines = [...planilla.additionalLines];
+              additionalLines[i] = { ...line, paid };
+              setPlanilla({ ...planilla, additionalLines });
+            }}
           />
         ))}
         {editable ? (
@@ -258,8 +309,129 @@ export function PlanillaEditor({ monthKey }: Props) {
       <Card style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
         <SectionTitle>Fondos menos gastos</SectionTitle>
         <MoneyText amountClp={totals.fondosMenosGastosClp} large />
-        <BodyText muted>Ingresos − fijos − adicionales (como tu Excel).</BodyText>
+        <BodyText muted>Ingresos − fijos − adicionales − pagos de deudas.</BodyText>
       </Card>
+
+      {editable ? (
+        <Card>
+          <SectionTitle>Pagos de deudas</SectionTitle>
+          <BodyText muted>Elegí deuda, pago total o abono parcial. Al guardar se descuenta del saldo.</BodyText>
+          {planilla.debtPaymentLines.map((line, i) => {
+            const debt = debts.find((d) => d.id === line.debtId);
+            return (
+              <View key={line.id} style={[styles.debtPayCard, { borderColor: colors.border }]}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Deuda</Text>
+                <View style={styles.debtChipRow}>
+                  {activeDebts.map((d) => (
+                    <Pressable
+                      key={d.id}
+                      onPress={() => {
+                        const debtPaymentLines = [...planilla.debtPaymentLines];
+                        debtPaymentLines[i] = {
+                          ...line,
+                          debtId: d.id,
+                          amountClp: line.paymentKind === 'full' ? d.balance_clp : line.amountClp,
+                        };
+                        setPlanilla({ ...planilla, debtPaymentLines });
+                      }}
+                      style={[
+                        styles.debtChip,
+                        {
+                          borderColor: line.debtId === d.id ? colors.primary : colors.border,
+                          backgroundColor: line.debtId === d.id ? colors.primarySoft : colors.surface,
+                        },
+                      ]}>
+                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{d.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>{debt?.name ?? 'Elegí deuda'}</Text>
+                <View style={styles.kindRow}>
+                  <Pressable
+                    onPress={() => {
+                      const debtPaymentLines = [...planilla.debtPaymentLines];
+                      debtPaymentLines[i] = { ...line, paymentKind: 'full', amountClp: debt?.balance_clp ?? 0 };
+                      setPlanilla({ ...planilla, debtPaymentLines });
+                    }}
+                    style={[
+                      styles.kindBtn,
+                      line.paymentKind === 'full' && { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+                      { borderColor: colors.border },
+                    ]}>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>Pago total</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      const debtPaymentLines = [...planilla.debtPaymentLines];
+                      debtPaymentLines[i] = { ...line, paymentKind: 'partial' };
+                      setPlanilla({ ...planilla, debtPaymentLines });
+                    }}
+                    style={[
+                      styles.kindBtn,
+                      line.paymentKind === 'partial' && { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+                      { borderColor: colors.border },
+                    ]}>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>Abono</Text>
+                  </Pressable>
+                </View>
+                {line.paymentKind === 'partial' ? (
+                  <ClpInput
+                    amountClp={line.amountClp}
+                    onChangeAmount={(v) => {
+                      const debtPaymentLines = [...planilla.debtPaymentLines];
+                      debtPaymentLines[i] = { ...line, amountClp: v };
+                      setPlanilla({ ...planilla, debtPaymentLines });
+                    }}
+                  />
+                ) : (
+                  <BodyText muted>Se pagará el saldo restante ({formatClp(debt?.balance_clp ?? 0)})</BodyText>
+                )}
+                <View style={styles.paidToggle}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>Pagado</Text>
+                  <Switch
+                    value={!!line.paid}
+                    onValueChange={(paid) => {
+                      const debtPaymentLines = [...planilla.debtPaymentLines];
+                      debtPaymentLines[i] = { ...line, paid };
+                      setPlanilla({ ...planilla, debtPaymentLines });
+                    }}
+                  />
+                </View>
+                <Pressable
+                  onPress={() =>
+                    setPlanilla({
+                      ...planilla,
+                      debtPaymentLines: planilla.debtPaymentLines.filter((_, idx) => idx !== i),
+                    })
+                  }>
+                  <Text style={{ color: colors.danger, fontWeight: '700' }}>Quitar pago</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+          {activeDebts.length === 0 ? (
+            <BodyText muted>No hay deudas activas. Creá una en la pestaña Deudas.</BodyText>
+          ) : (
+            <Pressable
+              onPress={() => {
+                const first = activeDebts[0];
+                const entry: DebtPaymentLine = {
+                  id: `dp-${Date.now()}`,
+                  debtId: first.id,
+                  paymentKind: 'partial',
+                  amountClp: first.minimum_payment_clp,
+                  paid: false,
+                };
+                setPlanilla({ ...planilla, debtPaymentLines: [...planilla.debtPaymentLines, entry] });
+              }}>
+              <Text style={[styles.link, { color: colors.primary }]}>+ Agregar pago de deuda</Text>
+            </Pressable>
+          )}
+          {activeDebts.length > 1 && planilla.debtPaymentLines.length > 0 ? (
+            <BodyText muted>Tip: editá la deuda del pago tocando Deudas si necesitás cambiar cuál abonás.</BodyText>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>Reserva</SectionTitle>
@@ -360,6 +532,14 @@ const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: spacing.xs },
   lineCard: { marginBottom: spacing.sm, gap: spacing.xs },
+  lineHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  paidToggle: { alignItems: 'center', gap: 2 },
+  fundRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
+  debtPayCard: { borderWidth: 1, borderRadius: radii.md, padding: spacing.sm, gap: spacing.sm, marginBottom: spacing.sm },
+  debtChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  debtChip: { borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 6 },
+  kindRow: { flexDirection: 'row', gap: spacing.sm },
+  kindBtn: { flex: 1, borderWidth: 1, borderRadius: radii.sm, paddingVertical: spacing.sm, alignItems: 'center' },
   lineTitle: { fontSize: 15, fontWeight: '700' },
   categoryInput: {
     borderWidth: 1,

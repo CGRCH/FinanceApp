@@ -6,8 +6,13 @@ export interface MonthlyLedger {
   /** Parte individual hogar + legacy shared. */
   sharedExpensesClp: number;
   reserveClp: number;
+  fondosMenosGastosClp: number;
   /** Gasto neto del usuario (con cuentas divididas). */
   allOutflowsClp?: number;
+  /** Saldo disponible según ítems marcados pagados en planilla. */
+  availableClp?: number;
+  paidSoFarClp?: number;
+  pendingOutflowsClp?: number;
 }
 
 export function totalExpensesClp(ledger: MonthlyLedger): number {

@@ -9,7 +9,7 @@ import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing } from '@/src/theme/tokens';
 
 export default function PanelScreen() {
-  const { balanceClp, ledger, projection, monthKey } = useFinance();
+  const { availableClp, ledger, projection, monthKey } = useFinance();
   const colors = useThemeColors();
 
   return (
@@ -32,8 +32,12 @@ export default function PanelScreen() {
       </View>
 
       <Card accessibilityRole="summary">
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Saldo del mes</Text>
-        <MoneyText amountClp={balanceClp} large />
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Disponible del mes</Text>
+        <MoneyText amountClp={availableClp} large />
+        <BodyText muted>
+          Fondo {formatClp(ledger.incomeClp)} · Pagado {formatClp(ledger.paidSoFarClp ?? 0)} · Pendiente{' '}
+          {formatClp(ledger.pendingOutflowsClp ?? 0)}
+        </BodyText>
         <View style={styles.row}>
           <Pill label={`Ingresos ${formatClp(ledger.incomeClp)}`} tone="ok" />
           <Pill

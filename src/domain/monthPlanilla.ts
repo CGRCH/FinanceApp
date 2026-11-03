@@ -7,6 +7,15 @@ export interface PlanillaLine {
   category: string;
   amountClp: number;
   debtId?: string | null;
+  paid?: boolean;
+}
+
+export interface DebtPaymentLine {
+  id: string;
+  debtId: string;
+  paymentKind: 'full' | 'partial';
+  amountClp: number;
+  paid?: boolean;
 }
 
 /** @deprecated Import Excel hogar; prefer sharedSplitLineIds en UI. */
@@ -27,6 +36,7 @@ export interface MonthPlanilla {
   sharedSplitPeople: number;
   householdLines: HouseholdLine[];
   householdSplitPeople: number;
+  debtPaymentLines: DebtPaymentLine[];
 }
 
 export interface MonthTotals {
@@ -44,6 +54,11 @@ export interface MonthTotals {
   /** Gasto que te afecta este mes (con divisiones aplicadas). */
   allOutflowsClp: number;
   surplusAfterReserveClp: number;
+  fundTotalClp: number;
+  paidSoFarClp: number;
+  availableClp: number;
+  pendingOutflowsClp: number;
+  debtPaymentsClp: number;
 }
 
 export function lineOutflowClp(line: PlanillaLine, sharedIds: Set<string>, people: number): number {
@@ -75,7 +90,8 @@ export function computeMonthTotals(planilla: MonthPlanilla): MonthTotals {
 
   const totalFixedClp = planilla.fixedLines.reduce((s, l) => s + l.amountClp, 0);
   const totalAdditionalClp = planilla.additionalLines.reduce((s, l) => s + l.amountClp, 0);
-  const fondosMenosGastosClp = planilla.incomeClp - totalFixedClp - totalAdditionalClp;
+  const debtPaymentsClp = planilla.debtPaymentLines.reduce((s, l) => s + l.amountClp, 0);
+  const fondosMenosGastosClp = planilla.incomeClp - totalFixedClp - totalAdditionalClp - debtPaymentsClp;
 
   const shared = computeSharedSplitTotals(planilla);
 
@@ -89,7 +105,22 @@ export function computeMonthTotals(planilla: MonthPlanilla): MonthTotals {
     0,
   );
 
-  const allOutflowsClp = userFixed + userAdditional + householdYourShareClp;
+  const allOutflowsClp = userFixed + userAdditional + householdYourShareClp + debtPaymentsClp;
+
+  let paidSoFarClp = 0;
+  for (const line of planilla.fixedLines) {
+    if (line.paid) paidSoFarClp += lineOutflowClp(line, sharedIds, people);
+  }
+  for (const line of planilla.additionalLines) {
+    if (line.paid) paidSoFarClp += lineOutflowClp(line, sharedIds, people);
+  }
+  for (const line of planilla.debtPaymentLines) {
+    if (line.paid && line.amountClp > 0) paidSoFarClp += line.amountClp;
+  }
+
+  const fundTotalClp = planilla.incomeClp;
+  const availableClp = fundTotalClp - paidSoFarClp;
+  const pendingOutflowsClp = Math.max(0, allOutflowsClp - paidSoFarClp);
 
   return {
     totalFixedClp,
@@ -102,6 +133,11 @@ export function computeMonthTotals(planilla: MonthPlanilla): MonthTotals {
     reserveClp: planilla.reserveClp,
     allOutflowsClp,
     surplusAfterReserveClp: planilla.incomeClp - allOutflowsClp - planilla.reserveClp,
+    fundTotalClp,
+    paidSoFarClp,
+    availableClp,
+    pendingOutflowsClp,
+    debtPaymentsClp,
   };
 }
 
@@ -120,6 +156,7 @@ export function emptyPlanilla(monthKey: string): MonthPlanilla {
     sharedSplitPeople: 2,
     householdLines: [],
     householdSplitPeople: 1,
+    debtPaymentLines: [],
   };
 }
 

@@ -6,15 +6,28 @@ import {
 } from '../migrate';
 
 describe('shouldRebuildTransactionsTable', () => {
-  it('no reconstruye si ya está en schema v3', () => {
+  it('no reconstruye si ya está en schema v4', () => {
+    const state: MigrationState = {
+      schemaVersion: 4,
+      hasTransactionsTable: true,
+      hasTransactionsV2Table: false,
+      transactionsHasDebtId: true,
+      transactionsHasIsPaid: true,
+    };
+    expect(shouldRebuildTransactionsTable(state)).toBe(false);
+    expect(isMigrationComplete(state)).toBe(true);
+  });
+
+  it('requiere v4 para migración completa desde v3', () => {
     const state: MigrationState = {
       schemaVersion: 3,
       hasTransactionsTable: true,
       hasTransactionsV2Table: false,
       transactionsHasDebtId: true,
+      transactionsHasIsPaid: false,
     };
-    expect(shouldRebuildTransactionsTable(state)).toBe(false);
-    expect(isMigrationComplete(state)).toBe(true);
+    expect(shouldRebuildTransactionsTable(state)).toBe(true);
+    expect(isMigrationComplete(state)).toBe(false);
   });
 
   it('reconstruye en v1 con tabla legacy', () => {
@@ -23,6 +36,7 @@ describe('shouldRebuildTransactionsTable', () => {
       hasTransactionsTable: true,
       hasTransactionsV2Table: false,
       transactionsHasDebtId: false,
+      transactionsHasIsPaid: false,
     };
     expect(shouldRebuildTransactionsTable(state)).toBe(true);
   });
@@ -33,6 +47,7 @@ describe('shouldRebuildTransactionsTable', () => {
       hasTransactionsTable: true,
       hasTransactionsV2Table: true,
       transactionsHasDebtId: false,
+      transactionsHasIsPaid: false,
     };
     expect(shouldRebuildTransactionsTable(state)).toBe(true);
   });

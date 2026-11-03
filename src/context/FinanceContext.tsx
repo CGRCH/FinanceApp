@@ -46,6 +46,7 @@ interface FinanceContextValue {
   refresh: () => Promise<void>;
   ledger: Awaited<ReturnType<typeof buildMonthlyLedger>>;
   balanceClp: number;
+  availableClp: number;
   projection: ReturnType<typeof computeProjection>;
   advice: ReturnType<typeof buildAdvice>;
   debtComparison: ReturnType<typeof compareStrategies> | null;
@@ -89,6 +90,10 @@ export function FinanceProvider({
     sharedExpensesClp: 0,
     reserveClp: 0,
     fondosMenosGastosClp: 0,
+    allOutflowsClp: 0,
+    availableClp: 0,
+    paidSoFarClp: 0,
+    pendingOutflowsClp: 0,
   });
   const [openingBalanceClp, setOpeningBalanceState] = useState(0);
   const [emergencyFundClp, setEmergencyFundClp] = useState(0);
@@ -215,6 +220,7 @@ export function FinanceProvider({
   );
 
   const balanceClp = monthBalanceClp(ledger);
+  const availableClp = ledger.availableClp ?? balanceClp;
   const now = new Date();
   const [year, monthNum] = monthKey.split('-').map(Number);
   const dayOfMonth = monthKey === currentMonthKey() ? now.getDate() : 1;
@@ -224,8 +230,8 @@ export function FinanceProvider({
   const avgDaily = dayOfMonth > 0 ? variableSoFar / dayOfMonth : 0;
 
   const projection = computeProjection({
-    balanceNowClp: balanceClp,
-    pendingFixedClp: 0,
+    balanceNowClp: availableClp,
+    pendingFixedClp: ledger.pendingOutflowsClp ?? 0,
     pendingAdditionalClp: 0,
     avgDailyVariableClp: avgDaily,
     dayOfMonth,
@@ -261,6 +267,7 @@ export function FinanceProvider({
       refresh,
       ledger,
       balanceClp,
+      availableClp,
       projection,
       advice,
       debtComparison,
@@ -290,6 +297,7 @@ export function FinanceProvider({
       refresh,
       ledger,
       balanceClp,
+      availableClp,
       projection,
       advice,
       debtComparison,

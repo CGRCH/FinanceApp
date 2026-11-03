@@ -32,10 +32,11 @@ npm start
    - Selector de mes compacto (`‹ mes año ›`) en la parte superior (mobile-first; evita chips verticales en web).
    - Ingresos, gastos fijos y adicionales: agregar, renombrar o eliminar secciones e ítems; montos con **formato CLP** al salir del campo (p. ej. `$1.450.000`).
    - **Dividir cuentas**: activá con toggle qué ítems ya cargados (luz, agua, internet, etc.) querés repartir, elegí entre cuántas personas (stepper ≥ 2); ves total seleccionado y **tu parte**, integrado en los totales del mes.
-   - **Cierre de meses**: solo el **mes actual** (fecha del dispositivo) es editable; meses anteriores (incluidos los importados del Excel) quedan **cerrados** (solo lectura); meses futuros aún no se editan. Navegá con ‹ › o deslizá lateralmente; el mes elegido **no se resetea** aunque no tenga datos guardados (plantilla en blanco).
-   - **Fondos menos gastos**, **Reserva** y resumen **Tu gasto del mes** (calculados al guardar).
+   - **Pagos de deudas** (mes actual): elegí deuda, **pago total** o **abono**; al guardar se descuenta del saldo (reversible si quitás el pago y guardás de nuevo). Historial en pestaña Deudas.
+   - **Ítems pagados**: toggle *Pagado* en fijos, adicionales y pagos de deuda → **Fondo total**, **Pagado hasta ahora**, **Disponible** y pendiente; el Panel usa el disponible.
+   - **Cierre de meses**: solo el **mes actual** es editable; anteriores cerrados, futuros bloqueados. Navegación ‹ › / swipe sin resetear el mes vacío.
 3. **Historial** — tarjetas resumen por mes; **detalle mes a mes** con el mismo navegador ‹ mes › (o swipe) además del listado.
-4. **Panel / Deudas / Consejos / Ajustes** — proyección, estrategias de pago, reglas locales, tema e import/export.
+4. **Panel / Deudas / Consejos / Ajustes** — el **Panel** muestra el **Disponible** (ingresos − ítems marcados pagados en planilla). **Deudas**: CRUD completo, historial de abonos, bola de nieve/avalancha con saldos actuales. Consejos y tema/import en Ajustes.
 
 ## Arquitectura
 
@@ -51,7 +52,8 @@ Persistencia:
 
 - `month_records` — ingresos, reserva, personas del reparto y IDs de líneas compartidas (`shared_split_*`, schema v3)
 - `transactions` — líneas fijas, adicionales y hogar
-- `debts` — saldos; al guardar planilla, abonos adicionales vinculados reducen la deuda
+- `debts` — saldos, cuotas, tasas; `paid_off_at` cuando queda saldada
+- `transactions` — líneas de planilla (`is_paid`, `debt_payment` para abonos)
 
 ## Importación Excel
 

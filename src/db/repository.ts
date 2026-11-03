@@ -93,12 +93,13 @@ export async function insertTransaction(
     debtId?: string | null;
     monthKey?: string;
     note?: string;
+    isPaid?: boolean;
   },
 ): Promise<string> {
   const txId = id();
   await db.runAsync(
-    `INSERT INTO transactions (id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO transactions (id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, is_paid, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     txId,
     input.type,
     input.kind ?? null,
@@ -109,6 +110,7 @@ export async function insertTransaction(
     input.debtId ?? null,
     input.monthKey ?? currentMonthKey(),
     input.note ?? null,
+    input.isPaid ? 1 : 0,
     new Date().toISOString(),
   );
   return txId;
@@ -142,17 +144,40 @@ export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): P
   const fixed: MonthPlanilla['fixedLines'] = [];
   const additional: MonthPlanilla['additionalLines'] = [];
   const household: MonthPlanilla['householdLines'] = [];
+  const debtPaymentLines: MonthPlanilla['debtPaymentLines'] = [];
 
   for (const row of rows) {
+    const paid = row.is_paid === 1;
     if (row.kind === 'fixed') {
-      fixed.push({ id: row.id, category: row.category, amountClp: row.amount_clp, debtId: row.debt_id });
+      fixed.push({
+        id: row.id,
+        category: row.category,
+        amountClp: row.amount_clp,
+        debtId: row.debt_id,
+        paid,
+      });
     } else if (row.kind === 'additional') {
-      additional.push({ id: row.id, category: row.category, amountClp: row.amount_clp, debtId: row.debt_id });
+      additional.push({
+        id: row.id,
+        category: row.category,
+        amountClp: row.amount_clp,
+        debtId: row.debt_id,
+        paid,
+      });
     } else if (row.kind === 'household') {
       household.push({
         id: row.id,
         category: row.category,
         totalClp: row.total_amount_clp ?? row.amount_clp,
+      });
+    } else if (row.kind === 'debt_payment' && row.debt_id) {
+      const paymentKind = row.note === 'full' ? 'full' : 'partial';
+      debtPaymentLines.push({
+        id: row.id,
+        debtId: row.debt_id,
+        paymentKind,
+        amountClp: row.amount_clp,
+        paid,
       });
     } else if (row.type === 'income' && !record) {
       base.incomeClp += row.amount_clp;
@@ -162,8 +187,31 @@ export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): P
   if (fixed.length) base.fixedLines = fixed;
   if (additional.length) base.additionalLines = additional;
   if (household.length) base.householdLines = household;
+  if (debtPaymentLines.length) base.debtPaymentLines = debtPaymentLines;
 
   return base;
+}
+
+export async function revertMonthDebtPayments(db: SQLiteDatabase, monthKey: string): Promise<void> {
+  const rows = await db.getAllAsync<TransactionRow>(
+    `SELECT * FROM transactions WHERE month_key = ? AND kind = 'debt_payment'`,
+    monthKey,
+  );
+  for (const row of rows) {
+    if (!row.debt_id || row.amount_clp <= 0) continue;
+    await db.runAsync(
+      `UPDATE debts SET balance_clp = balance_clp + ?, paid_off_at = NULL WHERE id = ?`,
+      row.amount_clp,
+      row.debt_id,
+    );
+  }
+}
+
+export async function getDebtBalances(db: SQLiteDatabase): Promise<Record<string, number>> {
+  const rows = await listDebts(db);
+  const map: Record<string, number> = {};
+  for (const row of rows) map[row.id] = row.balance_clp;
+  return map;
 }
 
 export async function applyDebtPayments(
@@ -173,7 +221,11 @@ export async function applyDebtPayments(
   for (const p of payments) {
     if (p.amountClp <= 0) continue;
     await db.runAsync(
-      'UPDATE debts SET balance_clp = CASE WHEN balance_clp - ? < 0 THEN 0 ELSE balance_clp - ? END WHERE id = ?',
+      `UPDATE debts SET
+         balance_clp = CASE WHEN balance_clp - ? < 0 THEN 0 ELSE balance_clp - ? END,
+         paid_off_at = CASE WHEN balance_clp - ? <= 0 THEN datetime('now') ELSE paid_off_at END
+       WHERE id = ?`,
+      p.amountClp,
       p.amountClp,
       p.amountClp,
       p.debtId,
@@ -211,9 +263,13 @@ export async function saveMonthPlanilla(
     new Date().toISOString(),
   );
 
+  if (options?.applyDebtPayments !== false) {
+    await revertMonthDebtPayments(db, monthKey);
+  }
+
   await deleteTransactionsForMonth(db, monthKey);
 
-  const debtPayments: { debtId: string; amountClp: number }[] = [];
+  const debtNames = new Map((await listDebts(db)).map((d) => [d.id, d.name]));
 
   for (const line of planilla.fixedLines) {
     if (line.amountClp <= 0) continue;
@@ -224,6 +280,7 @@ export async function saveMonthPlanilla(
       amountClp: line.amountClp,
       monthKey,
       debtId: line.debtId,
+      isPaid: line.paid,
     });
   }
 
@@ -236,10 +293,8 @@ export async function saveMonthPlanilla(
       amountClp: line.amountClp,
       monthKey,
       debtId: line.debtId ?? null,
+      isPaid: line.paid,
     });
-    if (line.debtId) {
-      debtPayments.push({ debtId: line.debtId, amountClp: line.amountClp });
-    }
   }
 
   for (const line of planilla.householdLines) {
@@ -257,8 +312,40 @@ export async function saveMonthPlanilla(
     });
   }
 
-  if (options?.applyDebtPayments !== false) {
-    await applyDebtPayments(db, debtPayments);
+  let resolvedPayments: { debtId: string; amountClp: number }[] = [];
+  if (options?.applyDebtPayments !== false && planilla.debtPaymentLines.length > 0) {
+    const balances = await getDebtBalances(db);
+    const working = { ...balances };
+
+    for (const line of planilla.debtPaymentLines) {
+      const balance = working[line.debtId] ?? 0;
+      if (balance <= 0) continue;
+
+      const amount =
+        line.paymentKind === 'full'
+          ? balance
+          : Math.max(0, Math.min(line.amountClp, balance));
+      if (amount <= 0) continue;
+
+      const name = debtNames.get(line.debtId) ?? 'Deuda';
+      await insertTransaction(db, {
+        type: 'expense',
+        kind: 'debt_payment',
+        category: `Pago ${name}`,
+        amountClp: amount,
+        monthKey,
+        debtId: line.debtId,
+        note: line.paymentKind,
+        isPaid: line.paid,
+      });
+
+      resolvedPayments.push({ debtId: line.debtId, amountClp: amount });
+      working[line.debtId] = balance - amount;
+    }
+  }
+
+  if (options?.applyDebtPayments !== false && resolvedPayments.length > 0) {
+    await applyDebtPayments(db, resolvedPayments);
   }
 }
 
@@ -271,11 +358,14 @@ export async function buildMonthlyLedger(db: SQLiteDatabase, monthKey: string): 
     openingBalanceClp: opening,
     incomeClp: planilla.incomeClp,
     fixedExpensesClp: totals.totalFixedClp,
-    additionalExpensesClp: totals.totalAdditionalClp,
+    additionalExpensesClp: totals.totalAdditionalClp + totals.debtPaymentsClp,
     sharedExpensesClp: totals.sharedYourPartClp + totals.householdYourShareClp,
     reserveClp: planilla.reserveClp,
     fondosMenosGastosClp: totals.fondosMenosGastosClp,
     allOutflowsClp: totals.allOutflowsClp,
+    availableClp: totals.availableClp,
+    paidSoFarClp: totals.paidSoFarClp,
+    pendingOutflowsClp: totals.pendingOutflowsClp,
   };
 }
 
@@ -307,23 +397,25 @@ export async function listDebts(db: SQLiteDatabase): Promise<DebtRow[]> {
 
 export async function upsertDebt(
   db: SQLiteDatabase,
-  debt: Omit<DebtRow, 'sort_order'> & { sort_order?: number },
+  debt: Omit<DebtRow, 'sort_order' | 'paid_off_at'> & { sort_order?: number; paid_off_at?: string | null },
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO debts (id, name, balance_clp, minimum_payment_clp, interest_rate_bps, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO debts (id, name, balance_clp, minimum_payment_clp, interest_rate_bps, sort_order, paid_off_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        balance_clp = excluded.balance_clp,
        minimum_payment_clp = excluded.minimum_payment_clp,
        interest_rate_bps = excluded.interest_rate_bps,
-       sort_order = excluded.sort_order`,
+       sort_order = excluded.sort_order,
+       paid_off_at = CASE WHEN excluded.balance_clp > 0 THEN NULL ELSE COALESCE(debts.paid_off_at, excluded.paid_off_at) END`,
     debt.id,
     debt.name,
     debt.balance_clp,
     debt.minimum_payment_clp,
     debt.interest_rate_bps,
     debt.sort_order ?? 0,
+    debt.paid_off_at ?? null,
   );
 }
 
@@ -332,13 +424,43 @@ export async function deleteDebt(db: SQLiteDatabase, debtId: string): Promise<vo
 }
 
 export function debtRowsToAccounts(rows: DebtRow[]): DebtAccount[] {
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    balanceClp: r.balance_clp,
-    minimumPaymentClp: r.minimum_payment_clp,
-    interestRateBps: r.interest_rate_bps,
-  }));
+  return rows
+    .filter((r) => r.balance_clp > 0)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      balanceClp: r.balance_clp,
+      minimumPaymentClp: r.minimum_payment_clp,
+      interestRateBps: r.interest_rate_bps,
+    }));
+}
+
+export interface DebtPaymentHistoryRow {
+  id: string;
+  debt_id: string;
+  month_key: string;
+  amount_clp: number;
+  note: string | null;
+  created_at: string;
+}
+
+export async function listDebtPaymentHistory(
+  db: SQLiteDatabase,
+  debtId?: string,
+): Promise<DebtPaymentHistoryRow[]> {
+  if (debtId) {
+    return db.getAllAsync<DebtPaymentHistoryRow>(
+      `SELECT id, debt_id, month_key, amount_clp, note, created_at
+       FROM transactions WHERE kind = 'debt_payment' AND debt_id = ?
+       ORDER BY created_at DESC`,
+      debtId,
+    );
+  }
+  return db.getAllAsync<DebtPaymentHistoryRow>(
+    `SELECT id, debt_id, month_key, amount_clp, note, created_at
+     FROM transactions WHERE kind = 'debt_payment'
+     ORDER BY created_at DESC`,
+  );
 }
 
 function importedMonthToPlanilla(month: ImportedMonth): MonthPlanilla {
@@ -363,6 +485,7 @@ function importedMonthToPlanilla(month: ImportedMonth): MonthPlanilla {
   }));
   p.householdSplitPeople = month.householdSplitPeople ?? 2;
   p.sharedSplitPeople = month.householdSplitPeople ?? 2;
+  p.debtPaymentLines = [];
   const norm = (s: string) => s.trim().toLowerCase();
   for (const h of month.householdExpenses ?? []) {
     const match =
@@ -431,6 +554,7 @@ export async function seedDemoData(db: SQLiteDatabase): Promise<void> {
     sharedSplitPeople: 3,
     householdLines: [],
     householdSplitPeople: 1,
+    debtPaymentLines: [],
   };
 
   await saveMonthPlanilla(db, planilla);

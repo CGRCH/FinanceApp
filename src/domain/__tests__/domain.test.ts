@@ -4,6 +4,11 @@ import { computeProjection, monthBalanceClp } from '../projection';
 import { yourShareClp } from '../sharedExpenses';
 import { computeMonthTotals, computeSharedSplitTotals, emptyPlanilla, matchDebtIdForCategory } from '../monthPlanilla';
 import {
+  applyPaymentToBalance,
+  resolveDebtPaymentAmounts,
+  revertPaymentOnBalance,
+} from '../debtPayments';
+import {
   isMonthEditable,
   monthEditability,
   preserveSelectedMonthKey,
@@ -134,6 +139,41 @@ describe('month planilla totals', () => {
   it('vincula categoría con deuda', () => {
     const id = matchDebtIdForCategory('Pago Brian', [{ id: '1', name: 'Brian' }]);
     expect(id).toBe('1');
+  });
+
+  it('calcula disponible con ítems pagados', () => {
+    const p = emptyPlanilla('2026-11');
+    p.incomeClp = 1_000_000;
+    p.fixedLines[0].amountClp = 400_000;
+    p.fixedLines[0].paid = true;
+    p.additionalLines = [{ id: 'a', category: 'Comida', amountClp: 100_000, paid: false }];
+    const t = computeMonthTotals(p);
+    expect(t.fundTotalClp).toBe(1_000_000);
+    expect(t.paidSoFarClp).toBe(400_000);
+    expect(t.availableClp).toBe(600_000);
+    expect(t.pendingOutflowsClp).toBe(100_000);
+  });
+});
+
+describe('debt payments', () => {
+  it('resuelve pago total y abonos en orden', () => {
+    const resolved = resolveDebtPaymentAmounts(
+      [
+        { debtId: 'd1', paymentKind: 'partial', amountClp: 50_000 },
+        { debtId: 'd1', paymentKind: 'full', amountClp: 0 },
+      ],
+      { d1: 120_000 },
+    );
+    expect(resolved).toEqual([
+      { debtId: 'd1', amountClp: 50_000, paymentKind: 'partial' },
+      { debtId: 'd1', amountClp: 70_000, paymentKind: 'full' },
+    ]);
+  });
+
+  it('revierte abono al balance', () => {
+    const afterPay = applyPaymentToBalance(200_000, 80_000);
+    expect(afterPay).toBe(120_000);
+    expect(revertPaymentOnBalance(afterPay, 80_000)).toBe(200_000);
   });
 });
 
