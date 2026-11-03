@@ -10,7 +10,7 @@ interface Props {
   point: MonthComparePoint;
   maxIncome: number;
   selected?: boolean;
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 export function MonthHistoryCard({ point, maxIncome, selected, onPress }: Props) {
@@ -20,16 +20,8 @@ export function MonthHistoryCard({ point, maxIncome, selected, onPress }: Props)
   const incomeW = Math.max(8, Math.round((point.incomeClp / maxIncome) * 100));
   const expenseW = Math.max(4, Math.round((point.expensesClp / maxIncome) * 100));
 
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.card,
-        {
-          backgroundColor: selected ? colors.primarySoft : colors.surface,
-          borderColor: selected ? colors.primary : colors.border,
-        },
-      ]}>
+  const inner = (
+    <>
       <View style={styles.header}>
         <Text style={[styles.month, { color: colors.text }]}>{monthKeyToLabel(point.monthKey)}</Text>
         <View style={[styles.badge, { backgroundColor: saldo >= 0 ? colors.primarySoft : colors.dangerSoft }]}>
@@ -50,8 +42,26 @@ export function MonthHistoryCard({ point, maxIncome, selected, onPress }: Props)
         <Metric label="Reserva" value={formatClp(point.reserveClp)} colors={colors} />
         <Metric label="Saldo est." value={formatClp(saldo)} colors={colors} highlight={saldoTone} />
       </View>
-    </Pressable>
+    </>
   );
+
+  const cardStyle = [
+    styles.card,
+    {
+      backgroundColor: selected ? colors.primarySoft : colors.surface,
+      borderColor: selected ? colors.primary : colors.border,
+    },
+  ];
+
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} style={cardStyle}>
+        {inner}
+      </Pressable>
+    );
+  }
+
+  return <View style={cardStyle}>{inner}</View>;
 }
 
 function Metric({

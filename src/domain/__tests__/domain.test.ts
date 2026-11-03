@@ -3,6 +3,11 @@ import { compareStrategies, simulatePayoff } from '../debtStrategies';
 import { computeProjection, monthBalanceClp } from '../projection';
 import { yourShareClp } from '../sharedExpenses';
 import { computeMonthTotals, computeSharedSplitTotals, emptyPlanilla, matchDebtIdForCategory } from '../monthPlanilla';
+import {
+  isMonthEditable,
+  monthEditability,
+  preserveSelectedMonthKey,
+} from '../monthEditability';
 import { createFictionalFixtureWorkbook, parseGestiónWorkbook } from '../xlsxGestión';
 
 describe('computeProjection', () => {
@@ -80,6 +85,24 @@ describe('debt strategies', () => {
     const cmp = compareStrategies(debts, 50_000, new Date('2026-01-01'));
     expect(['snowball', 'avalanche']).toContain(cmp.recommended);
     expect(cmp.summary.length).toBeGreaterThan(10);
+  });
+});
+
+describe('month editability', () => {
+  const now = new Date('2026-11-15');
+
+  it('solo el mes calendario actual es editable', () => {
+    expect(isMonthEditable('2026-11', now)).toBe(true);
+    expect(monthEditability('2026-10', now)).toBe('closed');
+    expect(monthEditability('2026-12', now)).toBe('future');
+    expect(isMonthEditable('2026-01', now)).toBe(false);
+  });
+});
+
+describe('month selection', () => {
+  it('no reclampa al mes con datos si el usuario eligió otro mes', () => {
+    expect(preserveSelectedMonthKey('2026-10', ['2026-11'])).toBe('2026-10');
+    expect(preserveSelectedMonthKey('2026-12', ['2026-11'])).toBe('2026-12');
   });
 });
 

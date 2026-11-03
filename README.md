@@ -32,8 +32,9 @@ npm start
    - Selector de mes compacto (`‹ mes año ›`) en la parte superior (mobile-first; evita chips verticales en web).
    - Ingresos, gastos fijos y adicionales: agregar, renombrar o eliminar secciones e ítems; montos con **formato CLP** al salir del campo (p. ej. `$1.450.000`).
    - **Dividir cuentas**: activá con toggle qué ítems ya cargados (luz, agua, internet, etc.) querés repartir, elegí entre cuántas personas (stepper ≥ 2); ves total seleccionado y **tu parte**, integrado en los totales del mes.
+   - **Cierre de meses**: solo el **mes actual** (fecha del dispositivo) es editable; meses anteriores (incluidos los importados del Excel) quedan **cerrados** (solo lectura); meses futuros aún no se editan. Navegá con ‹ › o deslizá lateralmente; el mes elegido **no se resetea** aunque no tenga datos guardados (plantilla en blanco).
    - **Fondos menos gastos**, **Reserva** y resumen **Tu gasto del mes** (calculados al guardar).
-3. **Historial** — tarjetas por mes con ingresos, gastos, saldo/reserva, indicadores de color y barras mini para leer de un vistazo.
+3. **Historial** — tarjetas resumen por mes; **detalle mes a mes** con el mismo navegador ‹ mes › (o swipe) además del listado.
 4. **Panel / Deudas / Consejos / Ajustes** — proyección, estrategias de pago, reglas locales, tema e import/export.
 
 ## Arquitectura

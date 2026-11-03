@@ -32,7 +32,7 @@ const routes = [
       await page.getByLabel('Mes anterior').waitFor({ timeout: 60_000 });
     }
     if (name === 'historial') {
-      await page.getByText('Revisá mes a mes').waitFor({ timeout: 60_000 });
+      await page.getByText('Detalle del mes').waitFor({ timeout: 60_000 });
     }
     await page.waitForTimeout(2500);
     await page.screenshot({ path: path.join(outDir, `${name}.png`), fullPage: true });

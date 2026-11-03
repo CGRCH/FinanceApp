@@ -14,7 +14,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { ClpInput } from '@/src/components/planilla/ClpInput';
 import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
-import { formatClp } from '@/src/domain/money';
+import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import {
   computeMonthTotals,
   computeSharedSplitTotals,
@@ -22,6 +22,7 @@ import {
   type MonthPlanilla,
   type PlanillaLine,
 } from '@/src/domain/monthPlanilla';
+import { formatClp } from '@/src/domain/money';
 import { listDebts, loadMonthPlanilla, saveMonthPlanilla } from '@/src/db/repository';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing, radii } from '@/src/theme/tokens';
@@ -37,20 +38,23 @@ function EditableLineRow({
   onAmountChange,
   onRemove,
   categoryEditable,
+  readOnly,
 }: {
   line: PlanillaLine;
   onCategoryChange?: (v: string) => void;
   onAmountChange: (clp: number) => void;
   onRemove?: () => void;
   categoryEditable?: boolean;
+  readOnly?: boolean;
 }) {
   const colors = useThemeColors();
   return (
     <View style={styles.lineCard}>
-      {categoryEditable ? (
+      {categoryEditable && !readOnly ? (
         <TextInput
           value={line.category}
           onChangeText={onCategoryChange}
+          editable={!readOnly}
           placeholder="Nombre del ítem"
           placeholderTextColor={colors.textSecondary}
           style={[styles.categoryInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
@@ -59,8 +63,8 @@ function EditableLineRow({
         <Text style={[styles.lineTitle, { color: colors.text }]}>{line.category}</Text>
       )}
       <View style={styles.lineAmountRow}>
-        <ClpInput amountClp={line.amountClp} onChangeAmount={onAmountChange} style={{ flex: 1 }} />
-        {onRemove ? (
+        <ClpInput amountClp={line.amountClp} onChangeAmount={onAmountChange} style={{ flex: 1 }} editable={!readOnly} />
+        {onRemove && !readOnly ? (
           <Pressable onPress={onRemove} accessibilityLabel="Eliminar ítem" style={styles.removeBtn}>
             <Text style={{ color: colors.danger, fontWeight: '800' }}>✕</Text>
           </Pressable>
@@ -85,9 +89,11 @@ export function PlanillaEditor({ monthKey }: Props) {
 
   const totals = useMemo(() => (planilla ? computeMonthTotals(planilla) : null), [planilla]);
   const shared = useMemo(() => (planilla ? computeSharedSplitTotals(planilla) : null), [planilla]);
+  const editable = isMonthEditable(monthKey);
+  const editMode = monthEditability(monthKey);
 
   const toggleSharedLine = (lineId: string, enabled: boolean) => {
-    if (!planilla) return;
+    if (!planilla || !editable) return;
     const ids = new Set(planilla.sharedSplitLineIds);
     if (enabled) ids.add(lineId);
     else ids.delete(lineId);
@@ -100,7 +106,7 @@ export function PlanillaEditor({ monthKey }: Props) {
   }, [planilla]);
 
   const save = useCallback(async () => {
-    if (!planilla) return;
+    if (!planilla || !editable) return;
     setSaving(true);
     try {
       const linked = {
@@ -119,7 +125,7 @@ export function PlanillaEditor({ monthKey }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [planilla, db, debts, refresh, refreshMonthIndex]);
+  }, [planilla, db, debts, refresh, refreshMonthIndex, editable]);
 
   if (!planilla || !totals || !shared) {
     return (
@@ -134,12 +140,24 @@ export function PlanillaEditor({ monthKey }: Props) {
       style={styles.scroll}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">
+      {!editable ? (
+        <View style={[styles.closedBanner, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{monthEditabilityLabel(editMode)}</Text>
+          <BodyText muted>
+            {editMode === 'closed'
+              ? 'Este mes ya quedó registrado. Solo podés editar el mes actual.'
+              : 'Todavía no podés cargar meses futuros.'}
+          </BodyText>
+        </View>
+      ) : null}
+
       <Card>
         <SectionTitle>Ingresos</SectionTitle>
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Total del mes</Text>
         <ClpInput
           amountClp={planilla.incomeClp}
           onChangeAmount={(v) => setPlanilla({ ...planilla, incomeClp: v })}
+          editable={editable}
         />
       </Card>
 
@@ -150,6 +168,7 @@ export function PlanillaEditor({ monthKey }: Props) {
             key={line.id}
             line={line}
             categoryEditable
+            readOnly={!editable}
             onCategoryChange={(v) => {
               const fixedLines = [...planilla.fixedLines];
               fixedLines[i] = { ...line, category: v };
@@ -172,6 +191,7 @@ export function PlanillaEditor({ monthKey }: Props) {
             }
           />
         ))}
+        {editable ? (
         <Pressable
           onPress={() =>
             setPlanilla({
@@ -184,6 +204,7 @@ export function PlanillaEditor({ monthKey }: Props) {
           }>
           <Text style={[styles.link, { color: colors.primary }]}>+ Agregar ítem fijo</Text>
         </Pressable>
+        ) : null}
         <BodyText muted>Total registrado: {formatClp(totals.totalFixedClp)}</BodyText>
       </Card>
 
@@ -197,6 +218,7 @@ export function PlanillaEditor({ monthKey }: Props) {
             key={line.id}
             line={line}
             categoryEditable
+            readOnly={!editable}
             onCategoryChange={(v) => {
               const additionalLines = [...planilla.additionalLines];
               additionalLines[i] = { ...line, category: v };
@@ -216,6 +238,7 @@ export function PlanillaEditor({ monthKey }: Props) {
             }
           />
         ))}
+        {editable ? (
         <Pressable
           onPress={() =>
             setPlanilla({
@@ -228,6 +251,7 @@ export function PlanillaEditor({ monthKey }: Props) {
           }>
           <Text style={[styles.link, { color: colors.primary }]}>+ Agregar gasto adicional</Text>
         </Pressable>
+        ) : null}
         <BodyText muted>Total registrado: {formatClp(totals.totalAdditionalClp)}</BodyText>
       </Card>
 
@@ -242,6 +266,7 @@ export function PlanillaEditor({ monthKey }: Props) {
         <ClpInput
           amountClp={planilla.reserveClp}
           onChangeAmount={(v) => setPlanilla({ ...planilla, reserveClp: v })}
+          editable={editable}
         />
       </Card>
 
@@ -252,7 +277,9 @@ export function PlanillaEditor({ monthKey }: Props) {
           <Text style={{ color: colors.text, fontWeight: '700' }}>Personas</Text>
           <View style={styles.stepper}>
             <Pressable
+              disabled={!editable}
               onPress={() =>
+                editable &&
                 setPlanilla({
                   ...planilla,
                   sharedSplitPeople: Math.max(2, planilla.sharedSplitPeople - 1),
@@ -263,8 +290,9 @@ export function PlanillaEditor({ monthKey }: Props) {
             </Pressable>
             <Text style={[styles.stepValue, { color: colors.text }]}>{planilla.sharedSplitPeople}</Text>
             <Pressable
+              disabled={!editable}
               onPress={() =>
-                setPlanilla({ ...planilla, sharedSplitPeople: planilla.sharedSplitPeople + 1 })
+                editable && setPlanilla({ ...planilla, sharedSplitPeople: planilla.sharedSplitPeople + 1 })
               }
               style={[styles.stepBtn, { borderColor: colors.border }]}>
               <Text style={{ color: colors.text, fontSize: 20 }}>+</Text>
@@ -284,6 +312,7 @@ export function PlanillaEditor({ monthKey }: Props) {
                 </View>
                 <Switch
                   value={on}
+                  disabled={!editable}
                   onValueChange={(v) => toggleSharedLine(line.id, v)}
                   accessibilityLabel={`Dividir ${line.category}`}
                 />
@@ -307,12 +336,14 @@ export function PlanillaEditor({ monthKey }: Props) {
         <BodyText muted>Incluye divisiones de cuentas. Después de reserva: {formatClp(totals.surplusAfterReserveClp)}</BodyText>
       </Card>
 
+      {editable ? (
       <Pressable
         disabled={saving}
         onPress={save}
         style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}>
         <Text style={styles.saveBtnText}>{saving ? 'Guardando…' : 'Guardar planilla del mes'}</Text>
       </Pressable>
+      ) : null}
     </ScrollView>
   );
 }
@@ -320,6 +351,12 @@ export function PlanillaEditor({ monthKey }: Props) {
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  closedBanner: {
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: spacing.xs },
   lineCard: { marginBottom: spacing.sm, gap: spacing.xs },

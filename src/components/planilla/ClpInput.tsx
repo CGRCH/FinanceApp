@@ -8,9 +8,10 @@ import { radii, spacing } from '@/src/theme/tokens';
 interface Props extends Omit<TextInputProps, 'value' | 'onChangeText'> {
   amountClp: number;
   onChangeAmount: (clp: number) => void;
+  editable?: boolean;
 }
 
-export function ClpInput({ amountClp, onChangeAmount, style, ...rest }: Props) {
+export function ClpInput({ amountClp, onChangeAmount, style, editable = true, ...rest }: Props) {
   const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState('');
@@ -20,6 +21,7 @@ export function ClpInput({ amountClp, onChangeAmount, style, ...rest }: Props) {
   return (
     <TextInput
       {...rest}
+      editable={editable}
       value={display}
       onFocus={() => {
         setFocused(true);

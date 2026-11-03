@@ -13,6 +13,7 @@ import type { MonthlyLedger } from '@/src/domain/projection';
 import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
+import { isMonthEditable } from '@/src/domain/monthEditability';
 
 import { CREATE_STATEMENTS, type DebtRow, type ExpenseKind, type TransactionRow, type TransactionType } from './schema';
 
@@ -185,6 +186,9 @@ export async function saveMonthPlanilla(
   planilla: MonthPlanilla,
   options?: { applyDebtPayments?: boolean },
 ): Promise<void> {
+  if (!isMonthEditable(planilla.monthKey)) {
+    throw new Error('Solo podés editar el mes actual. Este mes está cerrado o aún no editable.');
+  }
   const monthKey = planilla.monthKey;
   const splitPeople = Math.max(1, planilla.sharedSplitPeople);
 

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, View, type ViewProps } from 'react-native';
 
 import { monthKeyToLabel, shiftMonthKey } from '@/src/domain/monthPlanilla';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
@@ -7,14 +8,29 @@ import { radii, spacing } from '@/src/theme/tokens';
 interface Props {
   monthKey: string;
   onMonthChange: (key: string) => void;
+  enableSwipe?: boolean;
 }
 
-export function MonthNavigator({ monthKey, onMonthChange }: Props) {
+export function MonthNavigator({ monthKey, onMonthChange, enableSwipe = false }: Props) {
   const colors = useThemeColors();
   const label = monthKeyToLabel(monthKey);
 
+  const panHandlers = useMemo(() => {
+    if (!enableSwipe) return {};
+    const responder = PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 24 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderRelease: (_, g) => {
+        if (g.dx > 40) onMonthChange(shiftMonthKey(monthKey, -1));
+        else if (g.dx < -40) onMonthChange(shiftMonthKey(monthKey, 1));
+      },
+    });
+    return responder.panHandlers;
+  }, [enableSwipe, monthKey, onMonthChange]);
+
   return (
-    <View style={[styles.bar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View
+      {...(panHandlers as ViewProps)}
+      style={[styles.bar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Mes anterior"

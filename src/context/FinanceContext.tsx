@@ -103,10 +103,7 @@ export function FinanceProvider({
     const keys = await listAllMonthKeys(db);
     setMonthKeys(keys);
     setComparePoints(await buildMonthCompare(db));
-    if (keys.length && !keys.includes(monthKey)) {
-      setMonthKey(keys[0]);
-    }
-  }, [db, monthKey]);
+  }, [db]);
 
   const refresh = useCallback(async () => {
     const rows = await listTransactionsForMonth(db, monthKey);
@@ -142,7 +139,6 @@ export function FinanceProvider({
         const hasData = await hasAnyFinanceData(db);
         if (!cancelled) setShowOnboarding(!onboardingDone && !hasData);
         await refreshMonthIndex();
-        await refresh();
         if (!cancelled) {
           setBootstrapError(null);
           setReady(true);
@@ -161,7 +157,7 @@ export function FinanceProvider({
       cancelled = true;
       clearTimeout(slowTimer);
     };
-  }, [db, refresh, refreshMonthIndex, bootstrapAttempt]);
+  }, [db, bootstrapAttempt, refreshMonthIndex]);
 
   const retryBootstrap = useCallback(() => {
     setBootstrapError(null);

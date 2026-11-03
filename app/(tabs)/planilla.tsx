@@ -11,7 +11,7 @@ export default function PlanillaScreen() {
 
   return (
     <View style={StyleSheet.flatten([styles.root, { backgroundColor: colors.background }])}>
-      <MonthNavigator monthKey={monthKey} onMonthChange={setMonthKey} />
+      <MonthNavigator monthKey={monthKey} onMonthChange={setMonthKey} enableSwipe />
       <PlanillaEditor monthKey={monthKey} />
     </View>
   );
