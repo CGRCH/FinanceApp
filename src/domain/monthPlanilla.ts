@@ -1,4 +1,5 @@
 import { yourShareClp } from './sharedExpenses';
+import { lineEffectiveClp, type SharedLineSplits } from './sharedLineSplits';
 
 export const DEFAULT_FIXED_CATEGORIES = ['Alquiler', 'Tlf', 'Luz', 'Agua', 'Internet'] as const;
 
@@ -31,16 +32,19 @@ export interface MonthPlanilla {
   fixedLines: PlanillaLine[];
   additionalLines: PlanillaLine[];
   reserveClp: number;
-  /** IDs de ítems (fijos/adicionales) marcados para dividir. */
-  sharedSplitLineIds: string[];
-  sharedSplitPeople: number;
+  /** Divisor ≥2 por id de línea (fijos/adicionales) marcada para dividir. */
+  sharedLineSplits: SharedLineSplits;
+  /** @deprecated Solo migración desde DB; usar sharedLineSplits. */
+  sharedSplitLineIds?: string[];
+  /** @deprecated Solo migración desde DB. */
+  sharedSplitPeople?: number;
   householdLines: HouseholdLine[];
   householdSplitPeople: number;
   debtPaymentLines: DebtPaymentLine[];
 }
 
 export interface MonthTotals {
-  /** Suma bruta de montos ingresados (sin dividir). */
+  /** Suma de tu parte (o monto completo si no divide) en fijos. */
   totalFixedClp: number;
   totalAdditionalClp: number;
   fondosMenosGastosClp: number;
@@ -63,30 +67,28 @@ export interface MonthTotals {
   afterPayingAllClp: number;
 }
 
-export function lineOutflowClp(line: PlanillaLine, sharedIds: Set<string>, people: number): number {
-  if (line.amountClp <= 0) return 0;
-  if (sharedIds.has(line.id)) return yourShareClp(line.amountClp, Math.max(1, people));
-  return line.amountClp;
+export function lineOutflowClp(line: PlanillaLine, splits: SharedLineSplits): number {
+  return lineEffectiveClp(line, splits);
 }
 
-/** Monto ingresado en planilla (para Pagado / Disponible / Pendiente). */
-export function lineEnteredClp(line: PlanillaLine): number {
-  return line.amountClp > 0 ? line.amountClp : 0;
+/** @deprecated usar lineEffectiveClp con sharedLineSplits */
+export function lineEnteredClp(line: PlanillaLine, splits: SharedLineSplits = {}): number {
+  return lineEffectiveClp(line, splits);
 }
 
 export function computeSharedSplitTotals(planilla: MonthPlanilla): {
   selectedTotalClp: number;
   yourPartClp: number;
 } {
-  const ids = new Set(planilla.sharedSplitLineIds);
-  const people = Math.max(1, planilla.sharedSplitPeople);
+  const splits = planilla.sharedLineSplits ?? {};
   const lines = [...planilla.fixedLines, ...planilla.additionalLines];
   let selectedTotalClp = 0;
   let yourPartClp = 0;
   for (const line of lines) {
-    if (!ids.has(line.id) || line.amountClp <= 0) continue;
+    const div = splits[line.id];
+    if (!div || div < 2 || line.amountClp <= 0) continue;
     selectedTotalClp += line.amountClp;
-    yourPartClp += yourShareClp(line.amountClp, people);
+    yourPartClp += yourShareClp(line.amountClp, div);
   }
   return { selectedTotalClp, yourPartClp };
 }
@@ -100,8 +102,10 @@ export function computeMonthTotals(
   planilla: MonthPlanilla,
   debtBalances: Record<string, number> = {},
 ): MonthTotals {
-  const totalFixedClp = planilla.fixedLines.reduce((s, l) => s + l.amountClp, 0);
-  const totalAdditionalClp = planilla.additionalLines.reduce((s, l) => s + l.amountClp, 0);
+  const splits = planilla.sharedLineSplits ?? {};
+
+  const totalFixedClp = planilla.fixedLines.reduce((s, l) => s + lineEffectiveClp(l, splits), 0);
+  const totalAdditionalClp = planilla.additionalLines.reduce((s, l) => s + lineEffectiveClp(l, splits), 0);
 
   let debtPaymentsClp = 0;
   for (const line of planilla.debtPaymentLines) {
@@ -118,23 +122,19 @@ export function computeMonthTotals(
     0,
   );
 
-  /** Total registrado en planilla (montos ingresados + deudas + hogar), sin dividir por compartidos. */
-  const allOutflowsClp =
-    totalFixedClp +
-    totalAdditionalClp +
-    householdYourShareClp +
-    debtPaymentsClp;
+  /** Total que te afecta este mes (tu parte en fijos/adicionales + hogar + deudas). */
+  const allOutflowsClp = totalFixedClp + totalAdditionalClp + householdYourShareClp + debtPaymentsClp;
 
   let paidSoFarClp = 0;
   let pendingOutflowsClp = 0;
   for (const line of planilla.fixedLines) {
-    const amt = lineEnteredClp(line);
+    const amt = lineEffectiveClp(line, splits);
     if (amt <= 0) continue;
     if (line.paid) paidSoFarClp += amt;
     else pendingOutflowsClp += amt;
   }
   for (const line of planilla.additionalLines) {
-    const amt = lineEnteredClp(line);
+    const amt = lineEffectiveClp(line, splits);
     if (amt <= 0) continue;
     if (line.paid) paidSoFarClp += amt;
     else pendingOutflowsClp += amt;
@@ -183,8 +183,7 @@ export function emptyPlanilla(monthKey: string): MonthPlanilla {
     })),
     additionalLines: [],
     reserveClp: 0,
-    sharedSplitLineIds: [],
-    sharedSplitPeople: 2,
+    sharedLineSplits: {},
     householdLines: [],
     householdSplitPeople: 1,
     debtPaymentLines: [],

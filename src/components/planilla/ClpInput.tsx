@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, TextInput, TextInputProps } from 'react-native';
 
 import { formatClp, parseClpInput } from '@/src/domain/money';
+import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { radii, spacing } from '@/src/theme/tokens';
 
@@ -9,14 +10,21 @@ interface Props extends Omit<TextInputProps, 'value' | 'onChangeText'> {
   amountClp: number;
   onChangeAmount: (clp: number) => void;
   editable?: boolean;
+  /** Si ≥2, muestra tu parte cuando no está enfocado (amountClp sigue siendo el total de la cuenta). */
+  splitDivisor?: number;
 }
 
-export function ClpInput({ amountClp, onChangeAmount, style, editable = true, ...rest }: Props) {
+export function ClpInput({ amountClp, onChangeAmount, style, editable = true, splitDivisor, ...rest }: Props) {
   const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState('');
 
-  const display = focused ? draft : amountClp > 0 ? formatClp(amountClp) : '';
+  const showShare =
+    !focused && splitDivisor != null && splitDivisor >= 2 && amountClp > 0
+      ? yourShareClp(amountClp, splitDivisor)
+      : null;
+  const displayAmount = showShare ?? amountClp;
+  const display = focused ? draft : displayAmount > 0 ? formatClp(displayAmount) : '';
 
   return (
     <TextInput

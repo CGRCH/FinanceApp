@@ -1,14 +1,14 @@
-import { yourShareClp } from './sharedExpenses';
-import { formatClp } from './money';
 import {
   computeMonthTotals,
   debtPaymentOutflowClp,
-  lineEnteredClp,
   type DebtPaymentLine,
   type MonthPlanilla,
   type MonthTotals,
   type PlanillaLine,
 } from './monthPlanilla';
+import { formatClp } from './money';
+import { yourShareClp } from './sharedExpenses';
+import { lineEffectiveClp, lineSplitDivisor, type SharedLineSplits } from './sharedLineSplits';
 
 export type BreakdownGroup = 'fixed' | 'additional' | 'household' | 'debt_payment';
 
@@ -16,7 +16,7 @@ export interface BreakdownRow {
   id: string;
   group: BreakdownGroup;
   label: string;
-  /** Monto ingresado en planilla (Pagado / Pendiente usan el total, no la parte dividida). */
+  /** Monto que te afecta (tu parte si divide). */
   committedClp: number;
   paid: boolean;
   note?: string;
@@ -44,24 +44,23 @@ export interface PlanillaBreakdown {
 function lineRows(
   lines: PlanillaLine[],
   group: 'fixed' | 'additional',
-  sharedIds: Set<string>,
-  people: number,
+  splits: SharedLineSplits,
 ): BreakdownRow[] {
   return lines
     .filter((l) => l.amountClp > 0 || l.category.trim())
     .map((l) => {
-      const committed = lineEnteredClp(l);
-      const shared = sharedIds.has(l.id) && l.amountClp > 0;
-      const shareClp = shared ? yourShareClp(l.amountClp, people) : 0;
+      const committed = lineEffectiveClp(l, splits);
+      const div = lineSplitDivisor(splits, l.id);
       return {
         id: l.id,
         group,
         label: l.category.trim() || 'Ítem',
         committedClp: committed,
         paid: !!l.paid,
-        note: shared
-          ? `tu parte: ${formatClp(shareClp)} (÷${people})`
-          : undefined,
+        note:
+          div && l.amountClp > 0
+            ? `total ${formatClp(l.amountClp)} ÷ ${div}`
+            : undefined,
       };
     })
     .filter((r) => r.committedClp > 0);
@@ -94,12 +93,11 @@ export function computePlanillaBreakdown(
   debtBalances: Record<string, number> = {},
   debtNames: Record<string, string> = {},
 ): PlanillaBreakdown {
-  const sharedIds = new Set(planilla.sharedSplitLineIds);
-  const people = Math.max(1, planilla.sharedSplitPeople);
+  const splits = planilla.sharedLineSplits ?? {};
   const totals = computeMonthTotals(planilla, debtBalances);
 
-  const fixedRows = lineRows(planilla.fixedLines, 'fixed', sharedIds, people);
-  const additionalRows = lineRows(planilla.additionalLines, 'additional', sharedIds, people);
+  const fixedRows = lineRows(planilla.fixedLines, 'fixed', splits);
+  const additionalRows = lineRows(planilla.additionalLines, 'additional', splits);
 
   const householdRows: BreakdownRow[] = planilla.householdLines
     .filter((h) => h.totalClp > 0)

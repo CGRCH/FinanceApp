@@ -31,7 +31,7 @@ npm start
 2. **Planilla del mes** — misma estructura que el Excel de César, todo editable en pantalla:
    - Selector de mes compacto (`‹ mes año ›`) en la parte superior (mobile-first; evita chips verticales en web).
    - Ingresos, gastos fijos y adicionales: agregar, renombrar o eliminar secciones e ítems; montos con **formato CLP** al salir del campo (p. ej. `$1.450.000`).
-   - **Dividir cuentas**: activá con toggle qué ítems repartir (sin preselección); elegí entre cuántas personas (stepper ≥ 2); ves total seleccionado y **tu parte** en fila (`tu parte: $X (÷N)`). No altera Pagado/Disponible.
+   - **Dividir cuentas** (acordeón, cerrado por defecto): cada ítem con toggle y divisor propio (÷2, ÷3…). En la fila del gasto se muestra **tu parte** y el total de la cuenta; Pagado/Disponible/Pendiente usan tu parte.
    - **Pagos de deudas** (mes actual): elegí deuda, **pago total** o **abono**; al guardar se descuenta del saldo (reversible si quitás el pago y guardás de nuevo). Historial en pestaña Deudas.
    - **Ítems pagados**: toggle *Pagado* en fijos, adicionales y pagos de deuda → **Fondo total**, **Pagado hasta ahora**, **Disponible**, **Pendiente**; el Panel usa el disponible.
    - **Cierre de meses**: solo el **mes actual** es editable; anteriores cerrados, futuros bloqueados. Navegación ‹ › / swipe sin resetear el mes vacío.
@@ -40,13 +40,13 @@ npm start
 
 ## Fórmulas de la planilla (verificables)
 
-Montos en **tu parte** cuando un ítem está en *Dividir cuentas* (monto ÷ personas, redondeo entero CLP) — solo informativo salvo que uses esa sección para planificar.
+Montos en **tu parte** cuando un ítem está en *Dividir cuentas* (total de la cuenta ÷ divisor del ítem, redondeo entero CLP). El total original se guarda para desactivar la división.
 
 | Concepto | Fórmula |
 |----------|---------|
-| **Disponible / Fondos menos gastos (app)** | `Ingresos − suma(montos ingresados con Pagado = true)` en fijos, adicionales y pagos de deuda (sin dividir por compartidos) |
-| **Pendiente por pagar** | Suma de montos ingresados con Pagado = false (más pagos de deuda pendientes) |
-| **Total registrado (Tu gasto del mes)** | Suma bruta de fijos + adicionales + tu parte hogar + pagos de deuda cargados |
+| **Disponible / Fondos menos gastos (app)** | `Ingresos − suma(tu parte de ítems con Pagado = true)` en fijos, adicionales y pagos de deuda |
+| **Pendiente por pagar** | Suma de tu parte con Pagado = false (+ deudas pendientes) |
+| **Total registrado (Tu gasto del mes)** | Suma de tu parte en fijos + adicionales + hogar + pagos de deuda cargados |
 | **Quedaría después de pagar todo** | `Ingresos − total registrado − reserva` |
 | **Excel clásico (import)** | `Fondos menos gastos = Ingresos − fijos − adicionales` (bruto, sin toggle Pagado ni pagos de deuda de la app) |
 
@@ -72,7 +72,7 @@ src/context/         FinanceProvider
 
 Persistencia:
 
-- `month_records` — ingresos, reserva, personas del reparto y IDs de líneas compartidas (`shared_split_*`, schema v3)
+- `month_records` — ingresos, reserva, `shared_line_splits` (divisor por ítem, schema v5; migra desde `shared_line_ids`)
 - `transactions` — líneas fijas, adicionales y hogar
 - `debts` — saldos, cuotas, tasas; `paid_off_at` cuando queda saldada
 - `transactions` — líneas de planilla (`is_paid`, `debt_payment` para abonos)

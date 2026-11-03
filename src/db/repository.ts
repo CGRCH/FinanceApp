@@ -11,6 +11,7 @@ import {
 import type { MonthComparePoint } from '@/src/domain/monthCompare';
 import type { MonthlyLedger } from '@/src/domain/projection';
 import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
+import { normalizePlanillaSplits, pruneSplitsForLines } from '@/src/domain/sharedLineSplits';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
 import { isMonthEditable } from '@/src/domain/monthEditability';
@@ -124,17 +125,23 @@ export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): P
     household_split_people: number;
     shared_split_people?: number;
     shared_line_ids?: string;
+    shared_line_splits?: string;
   }>('SELECT * FROM month_records WHERE month_key = ?', monthKey);
 
   if (record) {
     base.incomeClp = record.income_clp;
     base.reserveClp = record.reserve_clp;
     base.householdSplitPeople = Math.max(1, record.household_split_people);
-    base.sharedSplitPeople = Math.max(1, record.shared_split_people ?? 2);
+    base.sharedSplitPeople = Math.max(2, record.shared_split_people ?? 2);
     try {
       base.sharedSplitLineIds = JSON.parse(record.shared_line_ids ?? '[]') as string[];
     } catch {
       base.sharedSplitLineIds = [];
+    }
+    try {
+      base.sharedLineSplits = JSON.parse(record.shared_line_splits ?? '{}') as Record<string, number>;
+    } catch {
+      base.sharedLineSplits = {};
     }
   }
 
@@ -189,7 +196,7 @@ export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): P
   if (household.length) base.householdLines = household;
   if (debtPaymentLines.length) base.debtPaymentLines = debtPaymentLines;
 
-  return base;
+  return normalizePlanillaSplits(base);
 }
 
 export async function revertMonthDebtPayments(db: SQLiteDatabase, monthKey: string): Promise<void> {
@@ -242,24 +249,28 @@ export async function saveMonthPlanilla(
     throw new Error('Solo podés editar el mes actual. Este mes está cerrado o aún no editable.');
   }
   const monthKey = planilla.monthKey;
-  const splitPeople = Math.max(1, planilla.sharedSplitPeople);
+  const splits = pruneSplitsForLines(planilla);
+  const legacyIds = Object.keys(splits);
+  const legacyPeople = legacyIds.length > 0 ? Math.max(...legacyIds.map((id) => splits[id] ?? 2)) : 2;
 
   await db.runAsync(
-    `INSERT INTO month_records (month_key, income_clp, reserve_clp, household_split_people, shared_split_people, shared_line_ids, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO month_records (month_key, income_clp, reserve_clp, household_split_people, shared_split_people, shared_line_ids, shared_line_splits, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(month_key) DO UPDATE SET
        income_clp = excluded.income_clp,
        reserve_clp = excluded.reserve_clp,
        household_split_people = excluded.household_split_people,
        shared_split_people = excluded.shared_split_people,
        shared_line_ids = excluded.shared_line_ids,
+       shared_line_splits = excluded.shared_line_splits,
        updated_at = excluded.updated_at`,
     monthKey,
     planilla.incomeClp,
     planilla.reserveClp,
     Math.max(1, planilla.householdSplitPeople),
-    splitPeople,
-    JSON.stringify(planilla.sharedSplitLineIds),
+    legacyPeople,
+    JSON.stringify(legacyIds),
+    JSON.stringify(splits),
     new Date().toISOString(),
   );
 
@@ -273,11 +284,14 @@ export async function saveMonthPlanilla(
 
   for (const line of planilla.fixedLines) {
     if (line.amountClp <= 0) continue;
+    const div = splits[line.id];
     await insertTransaction(db, {
       type: 'expense',
       kind: 'fixed',
       category: line.category,
       amountClp: line.amountClp,
+      totalAmountClp: div && div >= 2 ? line.amountClp : null,
+      splitPeople: div && div >= 2 ? div : null,
       monthKey,
       debtId: line.debtId,
       isPaid: line.paid,
@@ -286,11 +300,14 @@ export async function saveMonthPlanilla(
 
   for (const line of planilla.additionalLines) {
     if (line.amountClp <= 0) continue;
+    const div = splits[line.id];
     await insertTransaction(db, {
       type: 'expense',
       kind: 'additional',
       category: line.category,
       amountClp: line.amountClp,
+      totalAmountClp: div && div >= 2 ? line.amountClp : null,
+      splitPeople: div && div >= 2 ? div : null,
       monthKey,
       debtId: line.debtId ?? null,
       isPaid: line.paid,
@@ -488,15 +505,16 @@ function importedMonthToPlanilla(month: ImportedMonth): MonthPlanilla {
     totalClp: h.amountClp,
   }));
   p.householdSplitPeople = month.householdSplitPeople ?? 2;
-  p.sharedSplitPeople = month.householdSplitPeople ?? 2;
+  p.sharedLineSplits = {};
   p.debtPaymentLines = [];
   const norm = (s: string) => s.trim().toLowerCase();
+  const splitPeople = Math.max(2, month.householdSplitPeople ?? 2);
   for (const h of month.householdExpenses ?? []) {
     const match =
       p.fixedLines.find((f) => norm(f.category) === norm(h.category)) ??
       p.additionalLines.find((a) => norm(a.category) === norm(h.category));
-    if (match && !p.sharedSplitLineIds.includes(match.id)) {
-      p.sharedSplitLineIds.push(match.id);
+    if (match && !p.sharedLineSplits[match.id]) {
+      p.sharedLineSplits[match.id] = splitPeople;
       if (h.amountClp > 0) match.amountClp = h.amountClp;
     }
   }
@@ -554,8 +572,7 @@ export async function seedDemoData(db: SQLiteDatabase): Promise<void> {
       { id: 'a2', category: 'Comida', amountClp: 112_000 },
     ],
     reserveClp: 80_000,
-    sharedSplitLineIds: [],
-    sharedSplitPeople: 2,
+    sharedLineSplits: {},
     householdLines: [],
     householdSplitPeople: 1,
     debtPaymentLines: [],

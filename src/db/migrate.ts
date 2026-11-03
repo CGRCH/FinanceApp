@@ -85,6 +85,46 @@ async function ensureSharedSplitColumns(db: SQLiteDatabase): Promise<void> {
   }
 }
 
+async function ensureSharedLineSplitsColumn(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'month_records'))) return;
+  try {
+    await db.execAsync("ALTER TABLE month_records ADD COLUMN shared_line_splits TEXT NOT NULL DEFAULT '{}'");
+  } catch {
+    /* existe */
+  }
+}
+
+async function migrateSharedLineSplitsFromLegacy(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'month_records'))) return;
+  if (!(await columnExists(db, 'month_records', 'shared_line_splits'))) return;
+
+  const rows = await db.getAllAsync<{
+    month_key: string;
+    shared_line_ids: string;
+    shared_split_people: number;
+    shared_line_splits: string;
+  }>('SELECT month_key, shared_line_ids, shared_split_people, shared_line_splits FROM month_records');
+
+  for (const row of rows) {
+    const raw = row.shared_line_splits?.trim();
+    if (raw && raw !== '{}' && raw !== '[]') continue;
+    let ids: string[] = [];
+    try {
+      ids = JSON.parse(row.shared_line_ids ?? '[]') as string[];
+    } catch {
+      ids = [];
+    }
+    if (ids.length === 0) continue;
+    const people = Math.max(2, row.shared_split_people ?? 2);
+    const splits: Record<string, number> = {};
+    for (const id of ids) splits[id] = people;
+    await db.runAsync('UPDATE month_records SET shared_line_splits = ? WHERE month_key = ?', [
+      JSON.stringify(splits),
+      row.month_key,
+    ]);
+  }
+}
+
 async function ensureDebtsPaidOffColumn(db: SQLiteDatabase): Promise<void> {
   if (!(await tableExists(db, 'debts'))) return;
   try {
@@ -252,6 +292,7 @@ export async function migrateSchema(db: SQLiteDatabase): Promise<void> {
   await db.withTransactionAsync(async () => {
     await ensureMonthRecordsTable(db);
     await ensureSharedSplitColumns(db);
+    await ensureSharedLineSplitsColumn(db);
     await ensureDebtsPaidOffColumn(db);
     await ensureTransactionIsPaidColumn(db);
     await ensureDebtIdColumn(db);
@@ -266,6 +307,10 @@ export async function migrateSchema(db: SQLiteDatabase): Promise<void> {
       if (!allowsDebtPayment || !state.transactionsHasIsPaid) {
         await rebuildTransactionsForV4(db);
       }
+    }
+
+    if (state.schemaVersion < 5) {
+      await migrateSharedLineSplitsFromLegacy(db);
     }
 
     await setSchemaVersion(db, SCHEMA_VERSION);

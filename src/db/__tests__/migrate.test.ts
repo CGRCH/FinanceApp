@@ -6,9 +6,9 @@ import {
 } from '../migrate';
 
 describe('shouldRebuildTransactionsTable', () => {
-  it('no reconstruye si ya está en schema v4', () => {
+  it('no reconstruye si ya está en schema v5', () => {
     const state: MigrationState = {
-      schemaVersion: 4,
+      schemaVersion: 5,
       hasTransactionsTable: true,
       hasTransactionsV2Table: false,
       transactionsHasDebtId: true,
@@ -16,6 +16,17 @@ describe('shouldRebuildTransactionsTable', () => {
     };
     expect(shouldRebuildTransactionsTable(state)).toBe(false);
     expect(isMigrationComplete(state)).toBe(true);
+  });
+
+  it('schema v4 aún no está completo (migra a v5)', () => {
+    const state: MigrationState = {
+      schemaVersion: 4,
+      hasTransactionsTable: true,
+      hasTransactionsV2Table: false,
+      transactionsHasDebtId: true,
+      transactionsHasIsPaid: true,
+    };
+    expect(isMigrationComplete(state)).toBe(false);
   });
 
   it('requiere v4 para migración completa desde v3', () => {

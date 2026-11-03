@@ -16,7 +16,7 @@ import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Pri
 import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import { formatClp } from '@/src/domain/money';
-import { yourShareClp } from '@/src/domain/sharedExpenses';
+import { lineSplitDivisor } from '@/src/domain/sharedLineSplits';
 import {
   computeMonthTotals,
   computeSharedSplitTotals,
@@ -45,8 +45,7 @@ function EditableLineRow({
   readOnly,
   onPaidChange,
   showPaidToggle,
-  sharedSplitPeople,
-  isSharedSplit,
+  splitDivisor,
 }: {
   line: PlanillaLine;
   onCategoryChange?: (v: string) => void;
@@ -56,8 +55,7 @@ function EditableLineRow({
   readOnly?: boolean;
   onPaidChange?: (paid: boolean) => void;
   showPaidToggle?: boolean;
-  sharedSplitPeople?: number;
-  isSharedSplit?: boolean;
+  splitDivisor?: number | null;
 }) {
   const colors = useThemeColors();
   return (
@@ -85,6 +83,7 @@ function EditableLineRow({
           onChangeAmount={onAmountChange}
           style={styles.amountCompact}
           editable={!readOnly}
+          splitDivisor={splitDivisor ?? undefined}
         />
         {showPaidToggle ? (
           <View style={styles.paidInline}>
@@ -103,9 +102,9 @@ function EditableLineRow({
           </Pressable>
         ) : null}
       </View>
-      {isSharedSplit && line.amountClp > 0 && sharedSplitPeople && sharedSplitPeople > 1 ? (
+      {splitDivisor && splitDivisor >= 2 && line.amountClp > 0 ? (
         <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
-          tu parte: {formatClp(yourShareClp(line.amountClp, sharedSplitPeople))} (÷{sharedSplitPeople})
+          total {formatClp(line.amountClp)} ÷ {splitDivisor}
         </Text>
       ) : null}
     </View>
@@ -119,6 +118,7 @@ export function PlanillaEditor({ monthKey }: Props) {
   const [planilla, setPlanilla] = useState<MonthPlanilla | null>(null);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [saving, setSaving] = useState(false);
+  const [splitExpanded, setSplitExpanded] = useState(false);
 
   useEffect(() => {
     loadMonthPlanilla(db, monthKey).then(setPlanilla);
@@ -146,10 +146,25 @@ export function PlanillaEditor({ monthKey }: Props) {
 
   const toggleSharedLine = (lineId: string, enabled: boolean) => {
     if (!planilla || !editable) return;
-    const ids = new Set(planilla.sharedSplitLineIds);
-    if (enabled) ids.add(lineId);
-    else ids.delete(lineId);
-    setPlanilla({ ...planilla, sharedSplitLineIds: [...ids] });
+    const splits = { ...(planilla.sharedLineSplits ?? {}) };
+    if (enabled) splits[lineId] = splits[lineId] ?? 2;
+    else delete splits[lineId];
+    setPlanilla({ ...planilla, sharedLineSplits: splits });
+  };
+
+  const setLineSplitDivisor = (lineId: string, people: number) => {
+    if (!planilla || !editable) return;
+    const n = Math.max(2, people);
+    setPlanilla({
+      ...planilla,
+      sharedLineSplits: { ...(planilla.sharedLineSplits ?? {}), [lineId]: n },
+    });
+  };
+
+  const removeSplitForLine = (lineId: string) => {
+    const splits = { ...(planilla?.sharedLineSplits ?? {}) };
+    delete splits[lineId];
+    return splits;
   };
 
   const splittableLines = useMemo(() => {
@@ -259,7 +274,7 @@ export function PlanillaEditor({ monthKey }: Props) {
                     setPlanilla({
                       ...planilla,
                       fixedLines: planilla.fixedLines.filter((_, idx) => idx !== i),
-                      sharedSplitLineIds: planilla.sharedSplitLineIds.filter((id) => id !== line.id),
+                      sharedLineSplits: removeSplitForLine(line.id),
                     })
                 : undefined
             }
@@ -269,8 +284,7 @@ export function PlanillaEditor({ monthKey }: Props) {
               fixedLines[i] = { ...line, paid };
               setPlanilla({ ...planilla, fixedLines });
             }}
-            isSharedSplit={planilla.sharedSplitLineIds.includes(line.id)}
-            sharedSplitPeople={planilla.sharedSplitPeople}
+            splitDivisor={lineSplitDivisor(planilla.sharedLineSplits ?? {}, line.id)}
           />
         ))}
         {editable ? (
@@ -315,7 +329,7 @@ export function PlanillaEditor({ monthKey }: Props) {
               setPlanilla({
                 ...planilla,
                 additionalLines: planilla.additionalLines.filter((_, idx) => idx !== i),
-                sharedSplitLineIds: planilla.sharedSplitLineIds.filter((id) => id !== line.id),
+                sharedLineSplits: removeSplitForLine(line.id),
               })
             }
             showPaidToggle
@@ -324,8 +338,7 @@ export function PlanillaEditor({ monthKey }: Props) {
               additionalLines[i] = { ...line, paid };
               setPlanilla({ ...planilla, additionalLines });
             }}
-            isSharedSplit={planilla.sharedSplitLineIds.includes(line.id)}
-            sharedSplitPeople={planilla.sharedSplitPeople}
+            splitDivisor={lineSplitDivisor(planilla.sharedLineSplits ?? {}, line.id)}
           />
         ))}
         {editable ? (
@@ -476,71 +489,80 @@ export function PlanillaEditor({ monthKey }: Props) {
       </Card>
 
       <Card>
-        <SectionTitle>Dividir cuentas</SectionTitle>
-        <BodyText muted>Elegí qué ítems ya ingresados se reparten y entre cuántas personas.</BodyText>
-        <View style={styles.stepperRow}>
-          <Text style={{ color: colors.text, fontWeight: '700' }}>Personas</Text>
-          <View style={styles.stepper}>
-            <Pressable
-              disabled={!editable}
-              onPress={() =>
-                editable &&
-                setPlanilla({
-                  ...planilla,
-                  sharedSplitPeople: Math.max(2, planilla.sharedSplitPeople - 1),
-                })
-              }
-              style={[styles.stepBtn, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.text, fontSize: 20 }}>−</Text>
-            </Pressable>
-            <Text style={[styles.stepValue, { color: colors.text }]}>{planilla.sharedSplitPeople}</Text>
-            <Pressable
-              disabled={!editable}
-              onPress={() =>
-                editable && setPlanilla({ ...planilla, sharedSplitPeople: planilla.sharedSplitPeople + 1 })
-              }
-              style={[styles.stepBtn, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.text, fontSize: 20 }}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        {splittableLines.length === 0 ? (
-          <BodyText muted>Agregá montos en fijos o adicionales para poder dividirlos.</BodyText>
-        ) : (
-          splittableLines.map((line) => {
-            const on = planilla.sharedSplitLineIds.includes(line.id);
-            return (
-              <View key={line.id} style={[styles.splitRow, { borderColor: colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: '600' }}>{line.category}</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{formatClp(line.amountClp)}</Text>
-                </View>
-                <Switch
-                  value={on}
-                  disabled={!editable}
-                  onValueChange={(v) => toggleSharedLine(line.id, v)}
-                  accessibilityLabel={`Dividir ${line.category}`}
-                />
-              </View>
-            );
-          })
-        )}
-        <View style={[styles.splitSummary, { backgroundColor: colors.surfaceMuted }]}>
-          <Text style={{ color: colors.textSecondary }}>Total seleccionado</Text>
-          <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(shared.selectedTotalClp)}</Text>
-          <Text style={{ color: colors.textSecondary, marginTop: spacing.sm }}>Tu parte</Text>
-          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
-            {formatClp(shared.yourPartClp)}
+        <Pressable
+          onPress={() => setSplitExpanded((v) => !v)}
+          style={styles.accordionHeader}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: splitExpanded }}>
+          <SectionTitle>Dividir cuentas</SectionTitle>
+          <Text style={{ color: colors.textSecondary, fontSize: 22, fontWeight: '700' }}>
+            {splitExpanded ? '▾' : '▸'}
           </Text>
-        </View>
+        </Pressable>
+        {splitExpanded ? (
+          <>
+            <BodyText muted>Cada ítem puede dividirse con su propio divisor (÷2, ÷3…). Afecta Pagado y Disponible.</BodyText>
+            {splittableLines.length === 0 ? (
+              <BodyText muted>Agregá montos en fijos o adicionales para poder dividirlos.</BodyText>
+            ) : (
+              splittableLines.map((line) => {
+                const splits = planilla.sharedLineSplits ?? {};
+                const on = lineSplitDivisor(splits, line.id) != null;
+                const div = splits[line.id] ?? 2;
+                return (
+                  <View key={line.id} style={[styles.splitRow, { borderColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: '600' }}>{line.category}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                        Total {formatClp(line.amountClp)}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={on}
+                      disabled={!editable}
+                      onValueChange={(v) => toggleSharedLine(line.id, v)}
+                      accessibilityLabel={`Dividir ${line.category}`}
+                    />
+                    {on ? (
+                      <View style={styles.splitItemStepper}>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>÷</Text>
+                        <Pressable
+                          disabled={!editable}
+                          onPress={() => editable && setLineSplitDivisor(line.id, div - 1)}
+                          style={[styles.stepBtnSmall, { borderColor: colors.border }]}>
+                          <Text style={{ color: colors.text }}>−</Text>
+                        </Pressable>
+                        <Text style={[styles.stepValue, { color: colors.text, fontSize: 16 }]}>{div}</Text>
+                        <Pressable
+                          disabled={!editable}
+                          onPress={() => editable && setLineSplitDivisor(line.id, div + 1)}
+                          style={[styles.stepBtnSmall, { borderColor: colors.border }]}>
+                          <Text style={{ color: colors.text }}>+</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+            <View style={[styles.splitSummary, { backgroundColor: colors.surfaceMuted }]}>
+              <Text style={{ color: colors.textSecondary }}>Total seleccionado</Text>
+              <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(shared.selectedTotalClp)}</Text>
+              <Text style={{ color: colors.textSecondary, marginTop: spacing.sm }}>Tu parte total</Text>
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
+                {formatClp(shared.yourPartClp)}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <BodyText muted>Tocá para expandir y repartir cuentas compartidas.</BodyText>
+        )}
       </Card>
 
       <Card style={{ backgroundColor: colors.primarySoft, borderColor: colors.primary }}>
         <SectionTitle>Tu gasto del mes</SectionTitle>
         <MoneyText amountClp={totals.allOutflowsClp} large />
-        <BodyText muted>
-          Suma registrada (montos ingresados + hogar + deudas). Dividir cuentas no reduce Pagado/Disponible.
-        </BodyText>
+        <BodyText muted>Suma de tu parte en fijos/adicionales + hogar + deudas cargadas.</BodyText>
       </Card>
 
       <Card style={{ backgroundColor: colors.warningSoft, borderColor: colors.warning }}>
@@ -636,6 +658,21 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   splitSummary: { borderRadius: radii.md, padding: spacing.md, marginTop: spacing.sm, gap: 2 },
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  splitItemStepper: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: spacing.xs },
+  stepBtnSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   saveBtn: { borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });

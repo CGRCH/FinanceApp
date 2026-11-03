@@ -19,7 +19,7 @@ describe('planilla breakdown identities', () => {
 
 describe('caso captura César (nov 2026 ficticio)', () => {
   /**
-   * Montos ingresados completos (Dividir cuentas solo informativo para Pagado/Disponible).
+   * Luz/Agua/Internet ÷3 cada uno; pendiente usa tu parte.
    */
   const buildCapturePlanilla = () => {
     const p = emptyPlanilla('2026-11');
@@ -32,8 +32,7 @@ describe('caso captura César (nov 2026 ficticio)', () => {
       { id: '5', category: 'Internet', amountClp: 25_000 },
     ];
     p.additionalLines = [{ id: 'a1', category: 'Otros', amountClp: 185_000 }];
-    p.sharedSplitLineIds = ['3', '4', '5'];
-    p.sharedSplitPeople = 3;
+    p.sharedLineSplits = { '3': 3, '4': 3, '5': 3 };
     p.reserveClp = 0;
     p.debtPaymentLines = [
       {
@@ -51,12 +50,12 @@ describe('caso captura César (nov 2026 ficticio)', () => {
     const p = buildCapturePlanilla();
     const t = computeMonthTotals(p, { credito: 2_000_000 });
     expect(t.availableClp).toBe(1_450_000);
-    expect(t.pendingOutflowsClp).toBe(1_895_000);
-    expect(t.afterPayingAllClp).toBe(-445_000);
+    expect(t.pendingOutflowsClp).toBe(1_847_000);
+    expect(t.afterPayingAllClp).toBe(-397_000);
     expect(t.paidSoFarClp).toBe(0);
 
     const b = computePlanillaBreakdown(p, { credito: 2_000_000 }, { credito: 'Crédito consumo' });
-    expect(b.fixedPendingClp + b.additionalPendingClp + b.debtPendingClp).toBe(1_895_000);
+    expect(b.fixedPendingClp + b.additionalPendingClp + b.debtPendingClp).toBe(1_847_000);
     expect(b.debtPendingClp).toBe(1_200_000);
   });
 });

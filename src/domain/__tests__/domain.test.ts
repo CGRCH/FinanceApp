@@ -140,22 +140,24 @@ describe('month planilla totals', () => {
     expect(t2.fondosMenosGastosClp).toBe(1_030_000);
   });
 
-  it('divide cuentas seleccionadas entre N personas', () => {
+  it('divide cuentas con divisor distinto por ítem', () => {
     const p = emptyPlanilla('2026-10');
     p.fixedLines[2].amountClp = 90_000;
     p.fixedLines[3].amountClp = 30_000;
-    p.sharedSplitLineIds = [p.fixedLines[2].id, p.fixedLines[3].id];
-    p.sharedSplitPeople = 3;
+    p.sharedLineSplits = {
+      [p.fixedLines[2].id]: 3,
+      [p.fixedLines[3].id]: 3,
+    };
     const shared = computeSharedSplitTotals(p);
     expect(shared.selectedTotalClp).toBe(120_000);
     expect(shared.yourPartClp).toBe(40_000);
     const totals = computeMonthTotals(p);
-    expect(totals.allOutflowsClp).toBe(120_000);
+    expect(totals.allOutflowsClp).toBe(40_000);
     expect(totals.paidSoFarClp).toBe(0);
-    expect(totals.pendingOutflowsClp).toBe(120_000);
+    expect(totals.pendingOutflowsClp).toBe(40_000);
   });
 
-  it('bug captura: arriendo pagado cuenta monto completo aunque esté en Dividir cuentas', () => {
+  it('arriendo pagado usa tu parte cuando está dividido', () => {
     const p = emptyPlanilla('2026-11');
     p.incomeClp = 1_000_000;
     p.fixedLines = [
@@ -163,13 +165,11 @@ describe('month planilla totals', () => {
       { id: 'cuentas', category: 'Cuentas básicas', amountClp: 85_000, paid: false },
       { id: 'mas', category: 'Mas', amountClp: 30_000, paid: false },
     ];
-    p.sharedSplitLineIds = ['arriendo'];
-    p.sharedSplitPeople = 2;
+    p.sharedLineSplits = { arriendo: 2 };
     const t = computeMonthTotals(p);
-    expect(t.paidSoFarClp).toBe(400_000);
-    expect(t.availableClp).toBe(600_000);
+    expect(t.paidSoFarClp).toBe(200_000);
+    expect(t.availableClp).toBe(800_000);
     expect(t.pendingOutflowsClp).toBe(115_000);
-    expect(t.fondosMenosGastosClp).toBe(600_000);
   });
 
   it('vincula categoría con deuda', () => {
