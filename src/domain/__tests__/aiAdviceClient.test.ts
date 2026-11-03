@@ -1,5 +1,6 @@
 import type { MonthAdviceSummary } from '../monthAdviceSummary';
 import {
+  extractJsonFromModelText,
   parseAiAdviceResponse,
   requestAiMonthAdvice,
   resolveAiBaseUrl,
@@ -21,16 +22,27 @@ const summary: MonthAdviceSummary = {
   dailyAllowanceClp: 15_000,
 };
 
+const sampleJson = `{"payFirst":[],"postpone":[],"runwayRisk":{"level":"medio","detail":"x"},"debtStrategy":{"approach":"avalanche","detail":"y"},"steps":[{"text":"z"}]}`;
+
 describe('aiAdviceClient', () => {
   it('resuelve URLs de proveedor', () => {
+    expect(resolveAiBaseUrl('gemini')).toContain('generativelanguage.googleapis.com');
+    expect(resolveAiBaseUrl('groq')).toContain('groq.com');
     expect(resolveAiBaseUrl('openai')).toContain('openai.com');
     expect(resolveAiBaseUrl('grok')).toContain('x.ai');
-    expect(resolveAiBaseUrl('custom', 'https://proxy.example/v1')).toBe('https://proxy.example/v1');
+    expect(resolveAiBaseUrl('custom', 'https://proxy.example/v1/')).toBe('https://proxy.example/v1');
   });
 
-  it('parsea JSON de respuesta', () => {
-    const parsed = parseAiAdviceResponse(`{"payFirst":[],"postpone":[],"runwayRisk":{"level":"medio","detail":"x"},"debtStrategy":{"approach":"avalanche","detail":"y"},"steps":[{"text":"z"}]}`);
+  it('parsea JSON plano', () => {
+    const parsed = parseAiAdviceResponse(sampleJson);
     expect(parsed.steps[0].text).toBe('z');
+  });
+
+  it('parsea JSON dentro de fences markdown', () => {
+    const wrapped = 'Aquí va:\n```json\n' + sampleJson + '\n```\n';
+    expect(extractJsonFromModelText(wrapped)).toBe(sampleJson);
+    const parsed = parseAiAdviceResponse(wrapped);
+    expect(parsed.runwayRisk.level).toBe('medio');
   });
 
   it('llama chat/completions con fetch mockeado', async () => {
@@ -56,13 +68,13 @@ describe('aiAdviceClient', () => {
     const result = await requestAiMonthAdvice(
       summary,
       'preview',
-      { provider: 'openai', model: 'gpt-4o-mini', apiKey: 'test-key' },
+      { provider: 'gemini', model: 'gemini-2.5-flash', apiKey: 'test-key' },
       mockFetch as unknown as typeof fetch,
     );
 
     expect(result.payFirst[0].title).toBe('Arriendo');
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/chat/completions'),
+      expect.stringContaining('generativelanguage.googleapis.com'),
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer test-key' }),
       }),

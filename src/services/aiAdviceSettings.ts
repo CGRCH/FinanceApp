@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import type { AiAdviceProvider } from '@/src/domain/aiAdviceClient';
-import { DEFAULT_AI_MODELS } from '@/src/domain/aiAdviceClient';
+import { DEFAULT_AI_MODELS, DEFAULT_AI_PROVIDER } from '@/src/domain/aiAdviceClient';
 import { getSetting, setSetting } from '@/src/db/repository';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -54,11 +54,11 @@ export async function setAiAdviceApiKey(value: string): Promise<void> {
 }
 
 export async function loadAiAdviceSettings(db: SQLiteDatabase): Promise<AiAdviceSettings> {
-  const providerRaw = (await getSetting(db, AI_SETTING_KEYS.provider)) ?? 'openai';
-  const provider =
-    providerRaw === 'grok' || providerRaw === 'custom' || providerRaw === 'openai'
-      ? providerRaw
-      : 'openai';
+  const providerRaw = await getSetting(db, AI_SETTING_KEYS.provider);
+  const valid: AiAdviceProvider[] = ['gemini', 'groq', 'openai', 'grok', 'custom'];
+  const provider: AiAdviceProvider = valid.includes(providerRaw as AiAdviceProvider)
+    ? (providerRaw as AiAdviceProvider)
+    : DEFAULT_AI_PROVIDER;
   const model = (await getSetting(db, AI_SETTING_KEYS.model)) ?? DEFAULT_AI_MODELS[provider];
   const customBaseUrl = (await getSetting(db, AI_SETTING_KEYS.customBaseUrl)) ?? '';
   const skipPreview = (await getSetting(db, AI_SETTING_KEYS.skipPreview)) === '1';

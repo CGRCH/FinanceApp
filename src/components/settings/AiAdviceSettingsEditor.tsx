@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { BodyText, Card, SectionTitle } from '@/src/components/ui/Primitives';
-import { DEFAULT_AI_MODELS, type AiAdviceProvider } from '@/src/domain/aiAdviceClient';
+import {
+  AI_PROVIDER_PRESETS,
+  DEFAULT_AI_MODELS,
+  DEFAULT_AI_PROVIDER,
+  FREE_AI_KEY_LINKS,
+  allDefaultAiModels,
+  type AiAdviceProvider,
+} from '@/src/domain/aiAdviceClient';
 import {
   isAiKeyStoredOnWeb,
   loadAiAdviceSettings,
@@ -14,17 +21,19 @@ import {
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { radii, spacing } from '@/src/theme/tokens';
 
-const PROVIDERS: { id: AiAdviceProvider; label: string }[] = [
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'grok', label: 'xAI Grok' },
-  { id: 'custom', label: 'Personalizado' },
-];
+const PROVIDER_ORDER: AiAdviceProvider[] = ['gemini', 'groq', 'openai', 'grok', 'custom'];
+
+function providerChipLabel(id: AiAdviceProvider): string {
+  const preset = AI_PROVIDER_PRESETS[id];
+  if (preset.freeTier) return `${preset.label} (gratis)`;
+  return preset.label;
+}
 
 export function AiAdviceSettingsEditor() {
   const db = useSQLiteContext();
   const colors = useThemeColors();
-  const [provider, setProvider] = useState<AiAdviceProvider>('openai');
-  const [model, setModel] = useState(DEFAULT_AI_MODELS.openai);
+  const [provider, setProvider] = useState<AiAdviceProvider>(DEFAULT_AI_PROVIDER);
+  const [model, setModel] = useState(DEFAULT_AI_MODELS.gemini);
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [hasKey, setHasKey] = useState(false);
@@ -46,11 +55,17 @@ export function AiAdviceSettingsEditor() {
 
   const pickProvider = async (p: AiAdviceProvider) => {
     setProvider(p);
-    const nextModel = model.trim() ? model : DEFAULT_AI_MODELS[p];
-    if (!model.trim() || Object.values(DEFAULT_AI_MODELS).includes(model as (typeof DEFAULT_AI_MODELS)[AiAdviceProvider])) {
+    const defaults = allDefaultAiModels();
+    const nextModel =
+      !model.trim() || defaults.has(model) ? DEFAULT_AI_MODELS[p] : model;
+    if (defaults.has(model) || !model.trim()) {
       setModel(DEFAULT_AI_MODELS[p]);
     }
-    await saveAiAdviceSettings(db, { provider: p, model: nextModel, customBaseUrl });
+    await saveAiAdviceSettings(db, {
+      provider: p,
+      model: defaults.has(model) ? DEFAULT_AI_MODELS[p] : nextModel,
+      customBaseUrl: p === 'custom' ? customBaseUrl : '',
+    });
     setSavedHint('Guardado');
     setTimeout(() => setSavedHint(null), 2000);
   };
@@ -69,11 +84,26 @@ export function AiAdviceSettingsEditor() {
     setTimeout(() => setSavedHint(null), 2500);
   };
 
+  const openLink = (url: string) => {
+    void Linking.openURL(url);
+  };
+
   return (
     <Card>
       <SectionTitle>IA para consejos</SectionTitle>
       <BodyText muted>
         Opcional. La key no sale de tu dispositivo y no se sube a ningún servidor nuestro.
+      </BodyText>
+      <BodyText muted>
+        Para probar gratis:{' '}
+        <Text style={{ color: colors.primary, fontWeight: '700' }} onPress={() => openLink(FREE_AI_KEY_LINKS.gemini)}>
+          Google AI Studio
+        </Text>
+        {' · '}
+        <Text style={{ color: colors.primary, fontWeight: '700' }} onPress={() => openLink(FREE_AI_KEY_LINKS.groq)}>
+          Groq Console
+        </Text>
+        . En planes gratuitos, los proveedores pueden usar tus datos para mejorar modelos; revisa sus políticas.
       </BodyText>
       {isAiKeyStoredOnWeb() ? (
         <Text style={{ color: colors.warning, fontSize: 12, fontWeight: '600' }}>
@@ -83,12 +113,12 @@ export function AiAdviceSettingsEditor() {
 
       <Text style={[styles.label, { color: colors.textSecondary }]}>Proveedor</Text>
       <View style={styles.chips}>
-        {PROVIDERS.map((p) => {
-          const selected = provider === p.id;
+        {PROVIDER_ORDER.map((id) => {
+          const selected = provider === id;
           return (
             <Pressable
-              key={p.id}
-              onPress={() => void pickProvider(p.id)}
+              key={id}
+              onPress={() => void pickProvider(id)}
               style={[
                 styles.chip,
                 {
@@ -96,11 +126,19 @@ export function AiAdviceSettingsEditor() {
                   backgroundColor: selected ? colors.primarySoft : colors.surfaceMuted,
                 },
               ]}>
-              <Text style={{ color: colors.text, fontWeight: selected ? '700' : '500' }}>{p.label}</Text>
+              <Text style={{ color: colors.text, fontWeight: selected ? '700' : '500', fontSize: 13 }}>
+                {providerChipLabel(id)}
+              </Text>
             </Pressable>
           );
         })}
       </View>
+
+      {provider !== 'custom' ? (
+        <Text style={{ color: colors.textSecondary, fontSize: 14, marginTop: spacing.xs }}>
+          URL: {AI_PROVIDER_PRESETS[provider].baseUrl}
+        </Text>
+      ) : null}
 
       {provider === 'custom' ? (
         <>
@@ -132,7 +170,7 @@ export function AiAdviceSettingsEditor() {
       <TextInput
         value={apiKeyDraft}
         onChangeText={setApiKeyDraft}
-        placeholder={hasKey ? '•••••••• (ya hay una guardada)' : 'sk-…'}
+        placeholder={hasKey ? '•••••••• (ya hay una guardada)' : provider === 'gemini' ? 'AIza…' : 'sk-…'}
         placeholderTextColor={colors.textSecondary}
         secureTextEntry
         autoCapitalize="none"

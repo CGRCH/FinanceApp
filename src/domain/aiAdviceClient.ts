@@ -1,6 +1,59 @@
 import type { MonthAdviceSummary } from './monthAdviceSummary';
 
-export type AiAdviceProvider = 'openai' | 'grok' | 'custom';
+export type AiAdviceProvider = 'gemini' | 'groq' | 'openai' | 'grok' | 'custom';
+
+export interface AiProviderPreset {
+  label: string;
+  baseUrl: string;
+  defaultModel: string;
+  /** Muestra en UI de keys gratis. */
+  freeTier?: boolean;
+}
+
+export const AI_PROVIDER_PRESETS: Record<AiAdviceProvider, AiProviderPreset> = {
+  gemini: {
+    label: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    defaultModel: 'gemini-2.5-flash',
+    freeTier: true,
+  },
+  groq: {
+    label: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    defaultModel: 'llama-3.3-70b-versatile',
+    freeTier: true,
+  },
+  openai: {
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    defaultModel: 'gpt-4o-mini',
+  },
+  grok: {
+    label: 'xAI Grok',
+    baseUrl: 'https://api.x.ai/v1',
+    defaultModel: 'grok-3-mini',
+  },
+  custom: {
+    label: 'Personalizado',
+    baseUrl: '',
+    defaultModel: 'gpt-4o-mini',
+  },
+};
+
+export const DEFAULT_AI_PROVIDER: AiAdviceProvider = 'gemini';
+
+export const DEFAULT_AI_MODELS: Record<AiAdviceProvider, string> = {
+  gemini: AI_PROVIDER_PRESETS.gemini.defaultModel,
+  groq: AI_PROVIDER_PRESETS.groq.defaultModel,
+  openai: AI_PROVIDER_PRESETS.openai.defaultModel,
+  grok: AI_PROVIDER_PRESETS.grok.defaultModel,
+  custom: AI_PROVIDER_PRESETS.custom.defaultModel,
+};
+
+export const FREE_AI_KEY_LINKS = {
+  gemini: 'https://aistudio.google.com/apikey',
+  groq: 'https://console.groq.com/keys',
+} as const;
 
 export interface AiAdviceConfig {
   provider: AiAdviceProvider;
@@ -23,20 +76,13 @@ export interface AiAdviceResult {
   steps: { text: string }[];
 }
 
-export const DEFAULT_AI_MODELS: Record<AiAdviceProvider, string> = {
-  openai: 'gpt-4o-mini',
-  grok: 'grok-3-mini',
-  custom: 'gpt-4o-mini',
-};
-
 export function resolveAiBaseUrl(provider: AiAdviceProvider, customBaseUrl?: string): string {
-  if (provider === 'grok') return 'https://api.x.ai/v1';
   if (provider === 'custom') {
     const trimmed = customBaseUrl?.trim().replace(/\/$/, '');
     if (!trimmed) throw new Error('Indica la URL base del proveedor personalizado.');
     return trimmed;
   }
-  return 'https://api.openai.com/v1';
+  return AI_PROVIDER_PRESETS[provider].baseUrl.replace(/\/$/, '');
 }
 
 export function buildAiAdvicePrompt(summary: MonthAdviceSummary, previewText: string): string {
@@ -59,11 +105,18 @@ Resumen del mes:
 ${previewText}`;
 }
 
-export function parseAiAdviceResponse(raw: string): AiAdviceResult {
+/** Extrae JSON aunque venga envuelto en \`\`\`json ... \`\`\`. */
+export function extractJsonFromModelText(raw: string): string {
   const trimmed = raw.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence?.[1]?.trim()) return fence[1].trim();
   const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('La respuesta no trae JSON.');
-  const data = JSON.parse(jsonMatch[0]) as AiAdviceResult;
+  return jsonMatch[0];
+}
+
+export function parseAiAdviceResponse(raw: string): AiAdviceResult {
+  const data = JSON.parse(extractJsonFromModelText(raw)) as AiAdviceResult;
   if (!data.runwayRisk || !data.debtStrategy || !Array.isArray(data.steps)) {
     throw new Error('JSON incompleto.');
   }
@@ -118,4 +171,8 @@ export async function requestAiMonthAdvice(
   const content = payload.choices?.[0]?.message?.content;
   if (!content?.trim()) throw new Error('Respuesta vacía del modelo.');
   return parseAiAdviceResponse(content);
+}
+
+export function allDefaultAiModels(): Set<string> {
+  return new Set(Object.values(DEFAULT_AI_MODELS));
 }
