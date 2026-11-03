@@ -9,11 +9,16 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "cl.cgrch.financeapp",
+      "buildNumber": "1",
       "infoPlist": {
         "NSFaceIDUsageDescription": "FinanceApp usa Face ID para desbloquear tu información financiera guardada solo en este dispositivo."
       }
     },
     "android": {
+      "package": "cl.cgrch.financeapp",
+      "versionCode": 1,
+      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
