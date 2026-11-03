@@ -134,6 +134,51 @@ async function ensureDebtsPaidOffColumn(db: SQLiteDatabase): Promise<void> {
   }
 }
 
+async function ensureDebtExtendedColumns(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'debts'))) return;
+  try {
+    await db.execAsync(
+      "ALTER TABLE debts ADD COLUMN debt_type TEXT NOT NULL DEFAULT 'credit_card'",
+    );
+  } catch {
+    /* existe */
+  }
+  try {
+    await db.execAsync('ALTER TABLE debts ADD COLUMN total_clp INTEGER');
+  } catch {
+    /* existe */
+  }
+  try {
+    await db.execAsync('ALTER TABLE debts ADD COLUMN installments_total INTEGER');
+  } catch {
+    /* existe */
+  }
+  try {
+    await db.execAsync('ALTER TABLE debts ADD COLUMN installment_amount_clp INTEGER');
+  } catch {
+    /* existe */
+  }
+
+  await db.runAsync(
+    `UPDATE debts SET debt_type = 'credit_card' WHERE debt_type IS NULL OR debt_type = ''`,
+  );
+}
+
+async function migrateDebtsPersonalFromZeroInterest(db: SQLiteDatabase): Promise<void> {
+  if (!(await tableExists(db, 'debts'))) return;
+  await db.runAsync(
+    `UPDATE debts SET
+       debt_type = 'personal',
+       total_clp = COALESCE(total_clp, MAX(balance_clp, minimum_payment_clp)),
+       installments_total = COALESCE(installments_total, CASE
+         WHEN minimum_payment_clp > 0 AND balance_clp > 0
+           THEN MAX(1, CAST((MAX(balance_clp, minimum_payment_clp) + minimum_payment_clp - 1) / minimum_payment_clp AS INTEGER))
+         ELSE 1 END),
+       installment_amount_clp = COALESCE(installment_amount_clp, NULLIF(minimum_payment_clp, 0), balance_clp)
+     WHERE interest_rate_bps = 0 AND debt_type = 'credit_card'`,
+  );
+}
+
 async function ensureTransactionIsPaidColumn(db: SQLiteDatabase): Promise<void> {
   if (!(await tableExists(db, 'transactions'))) return;
   if (await columnExists(db, 'transactions', 'is_paid')) return;
@@ -294,6 +339,7 @@ export async function migrateSchema(db: SQLiteDatabase): Promise<void> {
     await ensureSharedSplitColumns(db);
     await ensureSharedLineSplitsColumn(db);
     await ensureDebtsPaidOffColumn(db);
+    await ensureDebtExtendedColumns(db);
     await ensureTransactionIsPaidColumn(db);
     await ensureDebtIdColumn(db);
 
@@ -311,6 +357,10 @@ export async function migrateSchema(db: SQLiteDatabase): Promise<void> {
 
     if (state.schemaVersion < 5) {
       await migrateSharedLineSplitsFromLegacy(db);
+    }
+
+    if (state.schemaVersion < 7) {
+      await migrateDebtsPersonalFromZeroInterest(db);
     }
 
     await setSchemaVersion(db, SCHEMA_VERSION);

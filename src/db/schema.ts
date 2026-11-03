@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const CREATE_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS settings (
@@ -36,7 +36,11 @@ export const CREATE_STATEMENTS = [
     minimum_payment_clp INTEGER NOT NULL,
     interest_rate_bps INTEGER NOT NULL DEFAULT 0,
     sort_order INTEGER NOT NULL DEFAULT 0,
-    paid_off_at TEXT
+    paid_off_at TEXT,
+    debt_type TEXT NOT NULL DEFAULT 'credit_card' CHECK(debt_type IN ('credit_card','personal')),
+    total_clp INTEGER,
+    installments_total INTEGER,
+    installment_amount_clp INTEGER
   );`,
 ];
 
@@ -58,6 +62,8 @@ export interface TransactionRow {
   created_at: string;
 }
 
+export type DebtType = 'credit_card' | 'personal';
+
 export interface DebtRow {
   id: string;
   name: string;
@@ -66,4 +72,8 @@ export interface DebtRow {
   interest_rate_bps: number;
   sort_order: number;
   paid_off_at: string | null;
+  debt_type: DebtType;
+  total_clp: number | null;
+  installments_total: number | null;
+  installment_amount_clp: number | null;
 }

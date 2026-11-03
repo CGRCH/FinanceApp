@@ -6,9 +6,9 @@ import {
 } from '../migrate';
 
 describe('shouldRebuildTransactionsTable', () => {
-  it('no reconstruye si ya está en schema v6', () => {
+  it('no reconstruye si ya está en schema v7', () => {
     const state: MigrationState = {
-      schemaVersion: 6,
+      schemaVersion: 7,
       hasTransactionsTable: true,
       hasTransactionsV2Table: false,
       transactionsHasDebtId: true,
@@ -18,7 +18,29 @@ describe('shouldRebuildTransactionsTable', () => {
     expect(isMigrationComplete(state)).toBe(true);
   });
 
-  it('schema v5 aún no está completo (falta v6)', () => {
+  it('schema v6 aún no está completo (falta v7)', () => {
+    const state: MigrationState = {
+      schemaVersion: 6,
+      hasTransactionsTable: true,
+      hasTransactionsV2Table: false,
+      transactionsHasDebtId: true,
+      transactionsHasIsPaid: true,
+    };
+    expect(isMigrationComplete(state)).toBe(false);
+  });
+
+  it('schema v6 puede reconstruir transacciones si versión < SCHEMA_VERSION', () => {
+    const state: MigrationState = {
+      schemaVersion: 6,
+      hasTransactionsTable: true,
+      hasTransactionsV2Table: false,
+      transactionsHasDebtId: true,
+      transactionsHasIsPaid: true,
+    };
+    expect(shouldRebuildTransactionsTable(state)).toBe(true);
+  });
+
+  it('schema v5 aún no está completo (falta v7)', () => {
     const state: MigrationState = {
       schemaVersion: 5,
       hasTransactionsTable: true,
@@ -29,7 +51,7 @@ describe('shouldRebuildTransactionsTable', () => {
     expect(isMigrationComplete(state)).toBe(false);
   });
 
-  it('schema v4 aún no está completo (migra a v6)', () => {
+  it('schema v4 aún no está completo (migra a v7)', () => {
     const state: MigrationState = {
       schemaVersion: 4,
       hasTransactionsTable: true,

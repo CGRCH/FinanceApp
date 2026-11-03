@@ -14,6 +14,7 @@ import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
 import { normalizePlanillaSplits, pruneSplitsForLines } from '@/src/domain/sharedLineSplits';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
+import { removeDebtFromPlanilla, planillaReferencesDebt } from '@/src/domain/debtCleanup';
 import { applyDiezmoForMonth } from '@/src/domain/diezmo';
 import { isMonthEditable, monthEditability } from '@/src/domain/monthEditability';
 import {
@@ -517,16 +518,24 @@ export async function upsertDebt(
   db: SQLiteDatabase,
   debt: Omit<DebtRow, 'sort_order' | 'paid_off_at'> & { sort_order?: number; paid_off_at?: string | null },
 ): Promise<void> {
+  const debtType = debt.debt_type ?? 'credit_card';
   await db.runAsync(
-    `INSERT INTO debts (id, name, balance_clp, minimum_payment_clp, interest_rate_bps, sort_order, paid_off_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO debts (
+       id, name, balance_clp, minimum_payment_clp, interest_rate_bps, sort_order, paid_off_at,
+       debt_type, total_clp, installments_total, installment_amount_clp
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        balance_clp = excluded.balance_clp,
        minimum_payment_clp = excluded.minimum_payment_clp,
        interest_rate_bps = excluded.interest_rate_bps,
        sort_order = excluded.sort_order,
-       paid_off_at = CASE WHEN excluded.balance_clp > 0 THEN NULL ELSE COALESCE(debts.paid_off_at, excluded.paid_off_at) END`,
+       paid_off_at = CASE WHEN excluded.balance_clp > 0 THEN NULL ELSE COALESCE(debts.paid_off_at, excluded.paid_off_at) END,
+       debt_type = excluded.debt_type,
+       total_clp = excluded.total_clp,
+       installments_total = excluded.installments_total,
+       installment_amount_clp = excluded.installment_amount_clp`,
     debt.id,
     debt.name,
     debt.balance_clp,
@@ -534,10 +543,33 @@ export async function upsertDebt(
     debt.interest_rate_bps,
     debt.sort_order ?? 0,
     debt.paid_off_at ?? null,
+    debtType,
+    debt.total_clp ?? null,
+    debt.installments_total ?? null,
+    debt.installment_amount_clp ?? null,
   );
 }
 
-export async function deleteDebt(db: SQLiteDatabase, debtId: string): Promise<void> {
+export async function deleteDebt(db: SQLiteDatabase, debtId: string, now = new Date()): Promise<void> {
+  const current = currentMonthKey(now);
+  const keys = await listAllMonthKeys(db);
+  const targets = new Set<string>([current]);
+  for (const k of keys) {
+    if (canApplyTemplateToMonth(k, now)) targets.add(k);
+  }
+
+  for (const monthKey of targets) {
+    if (!isMonthEditable(monthKey, now) && !canApplyTemplateToMonth(monthKey, now)) continue;
+    const raw = await loadMonthPlanillaRaw(db, monthKey);
+    if (!planillaReferencesDebt(raw, debtId)) continue;
+    const cleaned = removeDebtFromPlanilla(raw, debtId);
+    if (isMonthEditable(monthKey, now)) {
+      await saveMonthPlanilla(db, cleaned, { applyDebtPayments: true });
+    } else {
+      await saveMonthPlanilla(db, cleaned, { applyDebtPayments: false, templateSync: true });
+    }
+  }
+
   await db.runAsync('DELETE FROM debts WHERE id = ?', debtId);
 }
 
@@ -634,6 +666,10 @@ export async function importGestiónData(
       balance_clp: d.balanceClp,
       minimum_payment_clp: Math.max(10_000, Math.round(d.balanceClp * 0.05)),
       interest_rate_bps: 1800,
+      debt_type: 'credit_card',
+      total_clp: null,
+      installments_total: null,
+      installment_amount_clp: null,
     });
   }
 
@@ -697,13 +733,21 @@ export async function seedDemoData(db: SQLiteDatabase): Promise<void> {
     balance_clp: 680_000,
     minimum_payment_clp: 45_000,
     interest_rate_bps: 2800,
+    debt_type: 'credit_card',
+    total_clp: null,
+    installments_total: null,
+    installment_amount_clp: null,
   });
   await upsertDebt(db, {
     id: id(),
     name: 'Préstamo demo',
-    balance_clp: 1_200_000,
-    minimum_payment_clp: 95_000,
-    interest_rate_bps: 1900,
+    balance_clp: 900_000,
+    minimum_payment_clp: 100_000,
+    interest_rate_bps: 0,
+    debt_type: 'personal',
+    total_clp: 1_000_000,
+    installments_total: 10,
+    installment_amount_clp: 100_000,
   });
 
   await setSetting(db, 'emergency_fund_clp', '320000');

@@ -18,6 +18,7 @@ import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import { applyDiezmoToPlanilla, diezmoHintLabel, isDiezmoCategory } from '@/src/domain/diezmo';
 import { formatClp } from '@/src/domain/money';
+import { debtDefaultPartialPaymentClp } from '@/src/domain/personalDebt';
 import { lineSplitDivisor } from '@/src/domain/sharedLineSplits';
 import {
   computeMonthTotals,
@@ -481,7 +482,7 @@ export function PlanillaEditor({ monthKey }: Props) {
                   id: `dp-${Date.now()}`,
                   debtId: first.id,
                   paymentKind: 'partial',
-                  amountClp: first.minimum_payment_clp,
+                  amountClp: debtDefaultPartialPaymentClp(first),
                   paid: false,
                 };
                 setPlanilla({ ...planilla, debtPaymentLines: [...planilla.debtPaymentLines, entry] });
