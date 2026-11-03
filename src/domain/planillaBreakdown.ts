@@ -6,6 +6,7 @@ import {
   type MonthTotals,
   type PlanillaLine,
 } from './monthPlanilla';
+import { diezmoHintLabel, isDiezmoCategory } from './diezmo';
 import { formatClp } from './money';
 import { yourShareClp } from './sharedExpenses';
 import { lineEffectiveClp, lineSplitDivisor, type SharedLineSplits } from './sharedLineSplits';
@@ -45,22 +46,23 @@ function lineRows(
   lines: PlanillaLine[],
   group: 'fixed' | 'additional',
   splits: SharedLineSplits,
+  incomeClp: number,
 ): BreakdownRow[] {
   return lines
     .filter((l) => l.amountClp > 0 || l.category.trim())
     .map((l) => {
       const committed = lineEffectiveClp(l, splits);
       const div = lineSplitDivisor(splits, l.id);
+      const notes: string[] = [];
+      if (isDiezmoCategory(l.category)) notes.push(diezmoHintLabel(incomeClp));
+      if (div && l.amountClp > 0) notes.push(`total ${formatClp(l.amountClp)} ÷ ${div}`);
       return {
         id: l.id,
         group,
         label: l.category.trim() || 'Ítem',
         committedClp: committed,
         paid: !!l.paid,
-        note:
-          div && l.amountClp > 0
-            ? `total ${formatClp(l.amountClp)} ÷ ${div}`
-            : undefined,
+        note: notes.length > 0 ? notes.join(' · ') : undefined,
       };
     })
     .filter((r) => r.committedClp > 0);
@@ -96,8 +98,8 @@ export function computePlanillaBreakdown(
   const splits = planilla.sharedLineSplits ?? {};
   const totals = computeMonthTotals(planilla, debtBalances);
 
-  const fixedRows = lineRows(planilla.fixedLines, 'fixed', splits);
-  const additionalRows = lineRows(planilla.additionalLines, 'additional', splits);
+  const fixedRows = lineRows(planilla.fixedLines, 'fixed', splits, planilla.incomeClp);
+  const additionalRows = lineRows(planilla.additionalLines, 'additional', splits, planilla.incomeClp);
 
   const householdRows: BreakdownRow[] = planilla.householdLines
     .filter((h) => h.totalClp > 0)

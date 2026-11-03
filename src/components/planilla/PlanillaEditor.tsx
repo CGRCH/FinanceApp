@@ -16,6 +16,7 @@ import { ClpInput } from '@/src/components/planilla/ClpInput';
 import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
+import { applyDiezmoToPlanilla, diezmoHintLabel, isDiezmoCategory } from '@/src/domain/diezmo';
 import { formatClp } from '@/src/domain/money';
 import { lineSplitDivisor } from '@/src/domain/sharedLineSplits';
 import {
@@ -48,6 +49,8 @@ function EditableLineRow({
   showPaidToggle,
   splitDivisor,
   categoryLabelOnly,
+  lockAmount,
+  amountHint,
 }: {
   line: PlanillaLine;
   onCategoryChange?: (v: string) => void;
@@ -60,6 +63,9 @@ function EditableLineRow({
   splitDivisor?: number | null;
   /** Nombre solo lectura con el mismo layout que el input editable (flex:1). */
   categoryLabelOnly?: boolean;
+  /** Monto calculado (p. ej. Diezmo); Pagado y división siguen editables si el mes lo permite. */
+  lockAmount?: boolean;
+  amountHint?: string;
 }) {
   const colors = useThemeColors();
   return (
@@ -97,7 +103,7 @@ function EditableLineRow({
           amountClp={line.amountClp}
           onChangeAmount={onAmountChange}
           style={styles.amountCompact}
-          editable={!readOnly}
+          editable={!readOnly && !lockAmount}
           splitDivisor={splitDivisor ?? undefined}
         />
         {showPaidToggle ? (
@@ -117,6 +123,9 @@ function EditableLineRow({
           </Pressable>
         ) : null}
       </View>
+      {amountHint ? (
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>{amountHint}</Text>
+      ) : null}
       {splitDivisor && splitDivisor >= 2 && line.amountClp > 0 ? (
         <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
           total {formatClp(line.amountClp)} ÷ {splitDivisor}
@@ -271,7 +280,7 @@ export function PlanillaEditor({ monthKey }: Props) {
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Total del mes</Text>
         <ClpInput
           amountClp={planilla.incomeClp}
-          onChangeAmount={(v) => setPlanilla({ ...planilla, incomeClp: v })}
+          onChangeAmount={(v) => setPlanilla(applyDiezmoToPlanilla({ ...planilla, incomeClp: v }))}
           editable={editable}
         />
       </Card>
@@ -284,7 +293,10 @@ export function PlanillaEditor({ monthKey }: Props) {
             line={line}
             categoryLabelOnly
             readOnly={!editable}
+            lockAmount={isDiezmoCategory(line.category)}
+            amountHint={isDiezmoCategory(line.category) ? diezmoHintLabel(planilla.incomeClp) : undefined}
             onAmountChange={(v) => {
+              if (isDiezmoCategory(line.category)) return;
               const fixedLines = [...planilla.fixedLines];
               fixedLines[i] = { ...line, amountClp: v };
               setPlanilla({ ...planilla, fixedLines });

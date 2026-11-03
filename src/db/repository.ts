@@ -14,6 +14,7 @@ import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
 import { normalizePlanillaSplits, pruneSplitsForLines } from '@/src/domain/sharedLineSplits';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
+import { applyDiezmoForMonth } from '@/src/domain/diezmo';
 import { isMonthEditable, monthEditability } from '@/src/domain/monthEditability';
 import {
   applyFixedTemplateToPlanilla,
@@ -280,7 +281,7 @@ export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): P
   if (canApplyTemplateToMonth(monthKey)) {
     planilla = applyFixedTemplateToPlanilla(planilla, template);
   }
-  return planilla;
+  return applyDiezmoForMonth(planilla, monthKey);
 }
 
 export async function currentMonthFixedAmountForTemplateId(
@@ -343,6 +344,7 @@ export async function saveMonthPlanilla(
   if (!allowed) {
     throw new Error('Solo podés editar el mes actual. Este mes está cerrado o aún no editable.');
   }
+  planilla = applyDiezmoForMonth(planilla, planilla.monthKey);
   const monthKey = planilla.monthKey;
   const splits = pruneSplitsForLines(planilla);
   const legacyIds = Object.keys(splits);
