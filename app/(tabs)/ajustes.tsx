@@ -1,9 +1,11 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { FixedExpenseTemplateEditor } from '@/src/components/settings/FixedExpenseTemplateEditor';
 import { AiAdviceSettingsEditor } from '@/src/components/settings/AiAdviceSettingsEditor';
+import { FixedExpenseTemplateEditor } from '@/src/components/settings/FixedExpenseTemplateEditor';
+import { AccordionSection } from '@/src/components/ui/AccordionSection';
 import { Card, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
+import type { ThemePreference } from '@/src/domain/themePreference';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing } from '@/src/theme/tokens';
 
@@ -18,7 +20,7 @@ export default function AjustesScreen() {
       <Card>
         <SectionTitle>Apariencia</SectionTitle>
         <View style={styles.chips}>
-          {(['system', 'light', 'dark'] as const).map((option) => {
+          {(['light', 'dark'] as const satisfies ThemePreference[]).map((option) => {
             const selected = themePreference === option;
             return (
               <Pressable
@@ -33,7 +35,7 @@ export default function AjustesScreen() {
                   },
                 ]}>
                 <Text style={{ color: colors.text, fontWeight: selected ? '700' : '500' }}>
-                  {option === 'system' ? 'Sistema' : option === 'light' ? 'Claro' : 'Oscuro'}
+                  {option === 'light' ? 'Claro' : 'Oscuro'}
                 </Text>
               </Pressable>
             );
@@ -41,9 +43,13 @@ export default function AjustesScreen() {
         </View>
       </Card>
 
-      <FixedExpenseTemplateEditor />
+      <AccordionSection title="Gastos fijos">
+        <FixedExpenseTemplateEditor />
+      </AccordionSection>
 
-      <AiAdviceSettingsEditor />
+      <AccordionSection title="IA para consejos">
+        <AiAdviceSettingsEditor />
+      </AccordionSection>
     </ScrollView>
   );
 }

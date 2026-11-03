@@ -13,6 +13,7 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { ClpInput } from '@/src/components/planilla/ClpInput';
+import { AccordionSection } from '@/src/components/ui/AccordionSection';
 import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
@@ -143,7 +144,6 @@ export function PlanillaEditor({ monthKey }: Props) {
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [debtPersisting, setDebtPersisting] = useState(false);
-  const [splitExpanded, setSplitExpanded] = useState(false);
 
   const reloadPlanilla = useCallback(async () => {
     const [loaded, debtRows] = await Promise.all([loadMonthPlanilla(db, monthKey), listDebts(db)]);
@@ -425,19 +425,7 @@ export function PlanillaEditor({ monthKey }: Props) {
         />
       </Card>
 
-      <Card>
-        <Pressable
-          onPress={() => setSplitExpanded((v) => !v)}
-          style={styles.accordionHeader}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: splitExpanded }}>
-          <SectionTitle>Dividir cuentas</SectionTitle>
-          <Text style={{ color: colors.textSecondary, fontSize: 22, fontWeight: '700' }}>
-            {splitExpanded ? '▾' : '▸'}
-          </Text>
-        </Pressable>
-        {splitExpanded ? (
-          <>
+      <AccordionSection title="Dividir cuentas">
             <BodyText muted>Cada ítem puede dividirse con su propio divisor (÷2, ÷3…). Afecta Pagado y Disponible.</BodyText>
             {splittableLines.length === 0 ? (
               <BodyText muted>Agrega montos en fijos o adicionales para poder dividirlos.</BodyText>
@@ -490,11 +478,7 @@ export function PlanillaEditor({ monthKey }: Props) {
                 {formatClp(shared.yourPartClp)}
               </Text>
             </View>
-          </>
-        ) : (
-          <BodyText muted>Tocá para expandir y repartir cuentas compartidas.</BodyText>
-        )}
-      </Card>
+      </AccordionSection>
 
       <Card style={{ backgroundColor: colors.primarySoft, borderColor: colors.primary }}>
         <SectionTitle>Tu gasto del mes</SectionTitle>
@@ -603,12 +587,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   splitSummary: { borderRadius: radii.md, padding: spacing.md, marginTop: spacing.sm, gap: 2 },
-  accordionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
   splitItemStepper: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: spacing.xs },
   stepBtnSmall: {
     width: 28,

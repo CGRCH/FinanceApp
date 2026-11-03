@@ -27,7 +27,8 @@ import type { GestiónImportResult } from '@/src/domain/xlsxGestión';
 import type { MonthComparePoint } from '@/src/domain/monthCompare';
 import { resetLocalDatabase } from '@/src/db/databaseLifecycle';
 
-type ThemePreference = 'system' | 'light' | 'dark';
+import type { ThemePreference } from '@/src/domain/themePreference';
+import { normalizeStoredThemePreference } from '@/src/domain/themePreference';
 
 interface FinanceContextValue {
   ready: boolean;
@@ -83,7 +84,7 @@ export function FinanceProvider({
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [slowBootHint, setSlowBootHint] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>('light');
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [monthKeys, setMonthKeys] = useState<string[]>([]);
   const [comparePoints, setComparePoints] = useState<MonthComparePoint[]>([]);
@@ -114,8 +115,7 @@ export function FinanceProvider({
     setFixedTemplateRevision((n) => n + 1);
   }, []);
 
-  const effectiveScheme: 'light' | 'dark' =
-    themePreference === 'system' ? (system === 'dark' ? 'dark' : 'light') : themePreference;
+  const effectiveScheme: 'light' | 'dark' = themePreference;
 
   const refreshMonthIndex = useCallback(async () => {
     const keys = await listAllMonthKeys(db);
@@ -185,8 +185,11 @@ export function FinanceProvider({
     (async () => {
       try {
         const savedTheme = await AsyncStorage.getItem(THEME_KEY);
-        if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
-          setThemePreferenceState(savedTheme);
+        const resolved: ThemePreference = system === 'dark' ? 'dark' : 'light';
+        const normalized = normalizeStoredThemePreference(savedTheme, resolved);
+        setThemePreferenceState(normalized);
+        if (savedTheme !== normalized) {
+          await AsyncStorage.setItem(THEME_KEY, normalized);
         }
         const onboardingDone = (await getSetting(db, 'onboarding_done')) === '1';
         const hasData = await hasAnyFinanceData(db);

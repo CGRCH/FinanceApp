@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { BodyText, Card, SectionTitle } from '@/src/components/ui/Primitives';
+import { BodyText } from '@/src/components/ui/Primitives';
 import {
   AI_PROVIDER_PRESETS,
   DEFAULT_AI_MODELS,
@@ -89,8 +89,7 @@ export function AiAdviceSettingsEditor() {
   };
 
   return (
-    <Card>
-      <SectionTitle>IA para consejos</SectionTitle>
+    <>
       <BodyText muted>
         Opcional. La key no sale de tu dispositivo y no se sube a ningún servidor nuestro.
       </BodyText>
@@ -190,7 +189,7 @@ export function AiAdviceSettingsEditor() {
         </Pressable>
       ) : null}
       {savedHint ? <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>{savedHint}</Text> : null}
-    </Card>
+    </>
   );
 }
 

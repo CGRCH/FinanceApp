@@ -4,6 +4,7 @@
     "src/components/planilla/**/*.tsx",
     "src/components/planilla/**/*.ts",
     "src/components/settings/**/*.tsx",
+    "src/components/ui/**/*.tsx",
     "src/domain/**/*.ts",
     "src/db/repository.ts",
     "src/db/schema.ts",

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { BodyText, Card, SectionTitle } from '@/src/components/ui/Primitives';
+import { BodyText } from '@/src/components/ui/Primitives';
 import {
   moveTemplateItem,
   newFixedTemplateItemId,
@@ -110,16 +110,11 @@ export function FixedExpenseTemplateEditor() {
   };
 
   if (!template) {
-    return (
-      <Card>
-        <BodyText muted>Cargando plantilla de gastos fijos…</BodyText>
-      </Card>
-    );
+    return <BodyText muted>Cargando plantilla de gastos fijos…</BodyText>;
   }
 
   return (
-    <Card>
-      <SectionTitle>Gastos fijos</SectionTitle>
+    <>
       <BodyText muted>
         Lista de ítems que aparecen en la Planilla de cada mes (montos los cargas mes a mes). Los meses cerrados no
         cambian.
@@ -169,7 +164,7 @@ export function FixedExpenseTemplateEditor() {
         style={[styles.addBtn, { borderColor: colors.primary, opacity: saving ? 0.6 : 1 }]}>
         <Text style={{ color: colors.primary, fontWeight: '800' }}>+ Agregar ítem fijo</Text>
       </Pressable>
-    </Card>
+    </>
   );
 }
 
