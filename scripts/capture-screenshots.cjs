@@ -30,6 +30,8 @@ const routes = [
     await page.goto(`http://localhost:8081${route}`, { waitUntil: 'networkidle', timeout: 120_000 });
     if (name === 'planilla') {
       await page.getByLabel('Mes anterior').waitFor({ timeout: 60_000 });
+      await page.getByText('Fondo del mes').last().scrollIntoViewIfNeeded();
+      await page.waitForTimeout(800);
     }
     if (name === 'historial') {
       await page.getByText('Detalle del mes').waitFor({ timeout: 60_000 });
