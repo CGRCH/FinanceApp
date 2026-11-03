@@ -11,7 +11,7 @@ import { useFinance } from '@/src/context/FinanceContext';
 import { formatClp } from '@/src/domain/money';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import { computeMonthTotals, monthKeyToLabel } from '@/src/domain/monthPlanilla';
-import { loadMonthPlanilla } from '@/src/db/repository';
+import { getDebtBalances, loadMonthPlanilla } from '@/src/db/repository';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing } from '@/src/theme/tokens';
 
@@ -23,7 +23,11 @@ export default function HistorialScreen() {
   const [detailTotals, setDetailTotals] = useState<ReturnType<typeof computeMonthTotals> | null>(null);
 
   useEffect(() => {
-    loadMonthPlanilla(db, viewMonthKey).then((p) => setDetailTotals(computeMonthTotals(p)));
+    (async () => {
+      const p = await loadMonthPlanilla(db, viewMonthKey);
+      const balances = await getDebtBalances(db);
+      setDetailTotals(computeMonthTotals(p, balances));
+    })();
   }, [db, viewMonthKey]);
 
   const maxIncome = Math.max(...comparePoints.map((p) => p.incomeClp), 1);
