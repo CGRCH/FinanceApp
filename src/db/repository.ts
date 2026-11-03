@@ -14,7 +14,16 @@ import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
 import { normalizePlanillaSplits, pruneSplitsForLines } from '@/src/domain/sharedLineSplits';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
-import { isMonthEditable } from '@/src/domain/monthEditability';
+import { isMonthEditable, monthEditability } from '@/src/domain/monthEditability';
+import {
+  applyFixedTemplateToPlanilla,
+  canApplyTemplateToMonth,
+  DEFAULT_FIXED_EXPENSE_TEMPLATE,
+  FIXED_TEMPLATE_SETTING_KEY,
+  parseFixedExpenseTemplate,
+  serializeFixedExpenseTemplate,
+  type FixedExpenseTemplate,
+} from '@/src/domain/fixedExpenseTemplate';
 
 import { CREATE_STATEMENTS, type DebtRow, type ExpenseKind, type TransactionRow, type TransactionType } from './schema';
 
@@ -30,6 +39,7 @@ export async function initDatabase(db: SQLiteDatabase): Promise<void> {
   }
   try {
     await migrateSchema(db);
+    await ensureFixedExpenseTemplateMigrated(db);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Error de migración de base local: ${message}`);
@@ -117,7 +127,7 @@ export async function insertTransaction(
   return txId;
 }
 
-export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): Promise<MonthPlanilla> {
+export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string): Promise<MonthPlanilla> {
   const base = emptyPlanilla(monthKey);
   const record = await db.getFirstAsync<{
     income_clp: number;
@@ -199,6 +209,88 @@ export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): P
   return normalizePlanillaSplits(base);
 }
 
+export async function getFixedExpenseTemplate(db: SQLiteDatabase): Promise<FixedExpenseTemplate> {
+  const parsed = parseFixedExpenseTemplate(await getSetting(db, FIXED_TEMPLATE_SETTING_KEY));
+  if (parsed && parsed.items.length > 0) return parsed;
+  return { items: [...DEFAULT_FIXED_EXPENSE_TEMPLATE.items] };
+}
+
+export async function saveFixedExpenseTemplate(db: SQLiteDatabase, template: FixedExpenseTemplate): Promise<void> {
+  await setSetting(db, FIXED_TEMPLATE_SETTING_KEY, serializeFixedExpenseTemplate(template));
+}
+
+async function inferFixedTemplateFromDatabase(db: SQLiteDatabase): Promise<FixedExpenseTemplate> {
+  const current = currentMonthKey();
+  const raw = await loadMonthPlanillaRaw(db, current);
+  if (raw.fixedLines.length > 0) {
+    return {
+      items: raw.fixedLines.map((l) => ({
+        id: l.id,
+        name: l.category.trim() || 'Ítem',
+      })),
+    };
+  }
+  const keys = await listAllMonthKeys(db);
+  for (const key of [...keys].sort().reverse()) {
+    const p = await loadMonthPlanillaRaw(db, key);
+    if (p.fixedLines.length > 0) {
+      return {
+        items: p.fixedLines.map((l) => ({
+          id: l.id,
+          name: l.category.trim() || 'Ítem',
+        })),
+      };
+    }
+  }
+  return { items: [...DEFAULT_FIXED_EXPENSE_TEMPLATE.items] };
+}
+
+export async function ensureFixedExpenseTemplateMigrated(db: SQLiteDatabase): Promise<void> {
+  const existing = parseFixedExpenseTemplate(await getSetting(db, FIXED_TEMPLATE_SETTING_KEY));
+  if (existing && existing.items.length > 0) return;
+  await saveFixedExpenseTemplate(db, await inferFixedTemplateFromDatabase(db));
+}
+
+export async function syncFixedTemplateToOpenMonths(
+  db: SQLiteDatabase,
+  template: FixedExpenseTemplate,
+  now = new Date(),
+): Promise<void> {
+  const current = currentMonthKey(now);
+  const keys = await listAllMonthKeys(db);
+  const targets = new Set<string>([current]);
+  for (const k of keys) {
+    if (canApplyTemplateToMonth(k, now)) targets.add(k);
+  }
+
+  for (const monthKey of targets) {
+    if (!canApplyTemplateToMonth(monthKey, now)) continue;
+    const raw = await loadMonthPlanillaRaw(db, monthKey);
+    const merged = applyFixedTemplateToPlanilla(raw, template);
+    await saveMonthPlanilla(db, merged, {
+      applyDebtPayments: false,
+      templateSync: true,
+    });
+  }
+}
+
+export async function loadMonthPlanilla(db: SQLiteDatabase, monthKey: string): Promise<MonthPlanilla> {
+  const template = await getFixedExpenseTemplate(db);
+  let planilla = await loadMonthPlanillaRaw(db, monthKey);
+  if (canApplyTemplateToMonth(monthKey)) {
+    planilla = applyFixedTemplateToPlanilla(planilla, template);
+  }
+  return planilla;
+}
+
+export async function currentMonthFixedAmountForTemplateId(
+  db: SQLiteDatabase,
+  templateItemId: string,
+): Promise<number> {
+  const p = await loadMonthPlanillaRaw(db, currentMonthKey());
+  return p.fixedLines.find((l) => l.id === templateItemId)?.amountClp ?? 0;
+}
+
 export async function revertMonthDebtPayments(db: SQLiteDatabase, monthKey: string): Promise<void> {
   const rows = await db.getAllAsync<TransactionRow>(
     `SELECT * FROM transactions WHERE month_key = ? AND kind = 'debt_payment' AND is_paid = 1`,
@@ -243,9 +335,12 @@ export async function applyDebtPayments(
 export async function saveMonthPlanilla(
   db: SQLiteDatabase,
   planilla: MonthPlanilla,
-  options?: { applyDebtPayments?: boolean },
+  options?: { applyDebtPayments?: boolean; templateSync?: boolean },
 ): Promise<void> {
-  if (!isMonthEditable(planilla.monthKey)) {
+  const mode = monthEditability(planilla.monthKey);
+  const allowed =
+    isMonthEditable(planilla.monthKey) || (options?.templateSync === true && mode !== 'closed');
+  if (!allowed) {
     throw new Error('Solo podés editar el mes actual. Este mes está cerrado o aún no editable.');
   }
   const monthKey = planilla.monthKey;
@@ -552,6 +647,16 @@ export async function importGestiónData(
   }
 
   await setSetting(db, 'onboarding_done', '1');
+
+  if (months.length > 0) {
+    const sample = importedMonthToPlanilla(months[0]);
+    if (sample.fixedLines.length > 0) {
+      await saveFixedExpenseTemplate(db, {
+        items: sample.fixedLines.map((l) => ({ id: l.id, name: l.category })),
+      });
+    }
+  }
+
   return { transactions: txCount, debts: debts.length };
 }
 
@@ -579,6 +684,10 @@ export async function seedDemoData(db: SQLiteDatabase): Promise<void> {
   };
 
   await saveMonthPlanilla(db, planilla);
+
+  await saveFixedExpenseTemplate(db, {
+    items: planilla.fixedLines.map((l) => ({ id: l.id, name: l.category })),
+  });
 
   await upsertDebt(db, {
     id: id(),

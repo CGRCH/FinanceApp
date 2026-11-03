@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BodyText, Card, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
-import { pickAndParseWorkbook } from '@/src/services/importExport';
+import { pickAndParseWorkbook, exportDemoWorkbook } from '@/src/services/importExport';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing, radii } from '@/src/theme/tokens';
 import { Alert } from 'react-native';
@@ -33,6 +33,14 @@ export default function OnboardingScreen() {
     router.replace('/(tabs)/planilla');
   };
 
+  const onExportTemplate = async () => {
+    try {
+      await exportDemoWorkbook();
+    } catch (e) {
+      Alert.alert('Exportación', e instanceof Error ? e.message : 'No se pudo exportar');
+    }
+  };
+
   return (
     <ScrollView
       style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
@@ -53,6 +61,11 @@ export default function OnboardingScreen() {
         </Pressable>
         <Pressable style={[styles.btnGhost, { backgroundColor: colors.surfaceMuted }]} onPress={onDemo}>
           <Text style={[styles.btnGhostText, { color: colors.text }]}>Cargar datos de ejemplo</Text>
+        </Pressable>
+        <Pressable style={[styles.btnOutline, { borderColor: colors.border }]} onPress={onExportTemplate}>
+          <Text style={[styles.btnOutlineText, { color: colors.textSecondary, fontWeight: '600' }]}>
+            Exportar plantilla Excel (.xlsx)
+          </Text>
         </Pressable>
       </Card>
 

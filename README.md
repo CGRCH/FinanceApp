@@ -30,13 +30,13 @@ npm start
 1. **Onboarding** — la app arranca **vacía**: elegís empezar en blanco, importar tu `.xlsx` o cargar datos de ejemplo (ficticios).
 2. **Planilla del mes** — misma estructura que el Excel de César, todo editable en pantalla:
    - Selector de mes compacto (`‹ mes año ›`) en la parte superior (mobile-first; evita chips verticales en web).
-   - Ingresos, gastos fijos y adicionales: agregar, renombrar o eliminar secciones e ítems; montos con **formato CLP** al salir del campo (p. ej. `$1.450.000`).
+   - **Gastos fijos**: vienen de la plantilla en **Ajustes** (solo montos en Planilla). **Gastos adicionales** libres en Planilla.
    - **Dividir cuentas** (acordeón, cerrado por defecto): cada ítem con toggle y divisor propio (÷2, ÷3…). En la fila del gasto se muestra **tu parte** y el total de la cuenta; Pagado/Disponible/Pendiente usan tu parte.
    - **Pagos de deudas** (mes actual): elegí deuda, **pago total** o **abono**; al guardar se descuenta del saldo (reversible si quitás el pago y guardás de nuevo). Historial en pestaña Deudas.
    - **Ítems pagados**: toggle *Pagado* en fijos, adicionales y pagos de deuda → **Fondo total**, **Pagado hasta ahora**, **Disponible**, **Pendiente**; el Panel usa el disponible.
    - **Cierre de meses**: solo el **mes actual** es editable; anteriores cerrados, futuros bloqueados. Navegación ‹ › / swipe sin resetear el mes vacío.
 3. **Historial** — tarjetas resumen por mes; **detalle mes a mes** con el mismo navegador ‹ mes › (o swipe) además del listado.
-4. **Panel / Deudas / Consejos / Ajustes** — el **Panel** muestra el **Disponible** (ingresos − ítems marcados pagados en planilla). **Deudas**: CRUD completo, historial de abonos, bola de nieve/avalancha con saldos actuales. Consejos y tema/import en Ajustes.
+4. **Panel / Deudas / Consejos / Ajustes** — el **Panel** muestra el **Disponible**. **Ajustes**: tema claro/oscuro/sistema y **plantilla de gastos fijos** (nombres, orden). Import/export Excel y datos de ejemplo están en **onboarding**; reinicio de BD en pantalla de error.
 
 ## Fórmulas de la planilla (verificables)
 
@@ -72,7 +72,8 @@ src/context/         FinanceProvider
 
 Persistencia:
 
-- `month_records` — ingresos, reserva, `shared_line_splits` (divisor por ítem, schema v5; migra desde `shared_line_ids`)
+- `month_records` — ingresos, reserva, `shared_line_splits` (schema v5+)
+- `settings.fixed_expense_template` — plantilla JSON de ítems fijos (schema v6)
 - `transactions` — líneas fijas, adicionales y hogar
 - `debts` — saldos, cuotas, tasas; `paid_off_at` cuando queda saldada
 - `transactions` — líneas de planilla (`is_paid`, `debt_payment` para abonos)

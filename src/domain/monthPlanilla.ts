@@ -1,7 +1,8 @@
 import { yourShareClp } from './sharedExpenses';
 import { lineEffectiveClp, type SharedLineSplits } from './sharedLineSplits';
+import { DEFAULT_FIXED_EXPENSE_TEMPLATE } from './fixedExpenseTemplate';
 
-export const DEFAULT_FIXED_CATEGORIES = ['Alquiler', 'Tlf', 'Luz', 'Agua', 'Internet'] as const;
+export const DEFAULT_FIXED_CATEGORIES = DEFAULT_FIXED_EXPENSE_TEMPLATE.items.map((i) => i.name) as readonly string[];
 
 export interface PlanillaLine {
   id: string;
@@ -176,9 +177,9 @@ export function emptyPlanilla(monthKey: string): MonthPlanilla {
   return {
     monthKey,
     incomeClp: 0,
-    fixedLines: DEFAULT_FIXED_CATEGORIES.map((category, i) => ({
-      id: `fixed-${i}`,
-      category,
+    fixedLines: DEFAULT_FIXED_EXPENSE_TEMPLATE.items.map((item) => ({
+      id: item.id,
+      category: item.name,
       amountClp: 0,
     })),
     additionalLines: [],

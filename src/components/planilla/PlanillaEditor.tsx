@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -256,28 +257,12 @@ export function PlanillaEditor({ monthKey }: Props) {
           <EditableLineRow
             key={line.id}
             line={line}
-            categoryEditable
             readOnly={!editable}
-            onCategoryChange={(v) => {
-              const fixedLines = [...planilla.fixedLines];
-              fixedLines[i] = { ...line, category: v };
-              setPlanilla({ ...planilla, fixedLines });
-            }}
             onAmountChange={(v) => {
               const fixedLines = [...planilla.fixedLines];
               fixedLines[i] = { ...line, amountClp: v };
               setPlanilla({ ...planilla, fixedLines });
             }}
-            onRemove={
-              planilla.fixedLines.length > 1
-                ? () =>
-                    setPlanilla({
-                      ...planilla,
-                      fixedLines: planilla.fixedLines.filter((_, idx) => idx !== i),
-                      sharedLineSplits: removeSplitForLine(line.id),
-                    })
-                : undefined
-            }
             showPaidToggle
             onPaidChange={(paid) => {
               const fixedLines = [...planilla.fixedLines];
@@ -288,18 +273,11 @@ export function PlanillaEditor({ monthKey }: Props) {
           />
         ))}
         {editable ? (
-        <Pressable
-          onPress={() =>
-            setPlanilla({
-              ...planilla,
-              fixedLines: [
-                ...planilla.fixedLines,
-                { id: `f-${Date.now()}`, category: 'Nuevo ítem', amountClp: 0 },
-              ],
-            })
-          }>
-          <Text style={[styles.link, { color: colors.primary }]}>+ Agregar ítem fijo</Text>
-        </Pressable>
+          <Pressable onPress={() => router.push('/(tabs)/ajustes')} accessibilityRole="link">
+            <Text style={[styles.link, { color: colors.primary }]}>
+              Configurar ítems fijos en Ajustes
+            </Text>
+          </Pressable>
         ) : null}
         <BodyText muted>Total registrado: {formatClp(totals.totalFixedClp)}</BodyText>
       </Card>
