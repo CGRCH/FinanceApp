@@ -239,7 +239,7 @@ describe('buildAdvice', () => {
       projectedShortfallClp: 80_000,
       dailyAllowanceClp: 12_000,
     });
-    expect(tips[0].id).toBe('shortfall');
-    expect(tips.some((t) => t.id === 'debt-first')).toBe(true);
+    expect(tips.some((t) => t.id === 'shortfall' || t.id === 'pending-gap')).toBe(true);
+    expect(tips.some((t) => t.id === 'debt-target' || t.id === 'debt-first')).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FixedExpenseTemplateEditor } from '@/src/components/settings/FixedExpenseTemplateEditor';
+import { AiAdviceSettingsEditor } from '@/src/components/settings/AiAdviceSettingsEditor';
 import { Card, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
@@ -41,6 +42,8 @@ export default function AjustesScreen() {
       </Card>
 
       <FixedExpenseTemplateEditor />
+
+      <AiAdviceSettingsEditor />
     </ScrollView>
   );
 }

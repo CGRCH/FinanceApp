@@ -1,12 +1,13 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AiMonthAnalysisPanel } from '@/src/components/consejos/AiMonthAnalysisPanel';
 import { BodyText, Card, Pill, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing } from '@/src/theme/tokens';
 
 export default function ConsejosScreen() {
-  const { advice } = useFinance();
+  const { advice, monthAdviceSummary } = useFinance();
   const colors = useThemeColors();
 
   return (
@@ -14,7 +15,7 @@ export default function ConsejosScreen() {
       style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
       contentContainerStyle={styles.content}>
       <Text style={[styles.title, { color: colors.text }]}>Consejos para decidir mejor</Text>
-      <BodyText muted>Reglas simples, en chileno, para ordenar prioridades.</BodyText>
+      <BodyText muted>Prioridades del mes según tu planilla (sin enviar nada a internet).</BodyText>
 
       {advice.map((item) => (
         <Card key={item.id}>
@@ -28,6 +29,8 @@ export default function ConsejosScreen() {
           <BodyText>{item.body}</BodyText>
         </Card>
       ))}
+
+      <AiMonthAnalysisPanel summary={monthAdviceSummary} />
     </ScrollView>
   );
 }

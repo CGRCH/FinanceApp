@@ -3,7 +3,8 @@ import { useColorScheme as useSystemScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { buildAdvice } from '@/src/domain/advice';
+import { buildLocalMonthAdvice, type AdviceItem } from '@/src/domain/advice';
+import { computeAdviceBundle, type MonthAdviceSummary } from '@/src/domain/monthAdviceSummary';
 import { compareStrategies } from '@/src/domain/debtStrategies';
 import {
   buildMonthCompare,
@@ -12,6 +13,7 @@ import {
   getSetting,
   hasAnyFinanceData,
   importGestiónData,
+  loadMonthPlanilla,
   listAllMonthKeys,
   listDebts,
   listTransactionsForMonth,
@@ -48,7 +50,8 @@ interface FinanceContextValue {
   balanceClp: number;
   availableClp: number;
   projection: ReturnType<typeof computeProjection>;
-  advice: ReturnType<typeof buildAdvice>;
+  advice: AdviceItem[];
+  monthAdviceSummary: MonthAdviceSummary | null;
   debtComparison: ReturnType<typeof compareStrategies> | null;
   importFromParsed: (data: GestiónImportResult) => Promise<{ transactions: number; debts: number }>;
   openingBalanceClp: number;
@@ -104,6 +107,8 @@ export function FinanceProvider({
   const [totalDebtClp, setTotalDebtClp] = useState(0);
   const [debtComparison, setDebtComparison] = useState<FinanceContextValue['debtComparison']>(null);
   const [fixedTemplateRevision, setFixedTemplateRevision] = useState(0);
+  const [advice, setAdvice] = useState<AdviceItem[]>([]);
+  const [monthAdviceSummary, setMonthAdviceSummary] = useState<MonthAdviceSummary | null>(null);
 
   const notifyFixedTemplateChanged = useCallback(() => {
     setFixedTemplateRevision((n) => n + 1);
@@ -126,14 +131,49 @@ export function FinanceProvider({
     const extraDebt = Number.parseInt((await getSetting(db, 'extra_debt_payment_clp')) ?? '0', 10);
     const debtRows = await listDebts(db);
     const debts = debtRowsToAccounts(debtRows);
+    const debtTotal = debtRows.reduce((sum, d) => sum + d.balance_clp, 0);
+    const debtBalances = Object.fromEntries(debtRows.map((d) => [d.id, d.balance_clp]));
+    const comparison = debts.length ? compareStrategies(debts, extraDebt) : null;
 
     setTransactions(rows);
     setLedger(led);
     setOpeningBalanceState(opening);
     setEmergencyFundClp(emergency);
     setExtraDebtPaymentClp(extraDebt);
-    setTotalDebtClp(debtRows.reduce((sum, d) => sum + d.balance_clp, 0));
-    setDebtComparison(debts.length ? compareStrategies(debts, extraDebt) : null);
+    setTotalDebtClp(debtTotal);
+    setDebtComparison(comparison);
+
+    const now = new Date();
+    const [year, monthNum] = monthKey.split('-').map(Number);
+    const dayOfMonth = monthKey === currentMonthKey(now) ? now.getDate() : 1;
+    const dim = daysInMonth(year, monthNum - 1);
+    const avgDaily = dayOfMonth > 0 ? led.additionalExpensesClp / dayOfMonth : 0;
+    const projection = computeProjection({
+      balanceNowClp: led.availableClp ?? 0,
+      pendingFixedClp: led.pendingOutflowsClp ?? 0,
+      pendingAdditionalClp: 0,
+      avgDailyVariableClp: avgDaily,
+      dayOfMonth,
+      daysInMonth: dim,
+    });
+
+    const planilla = await loadMonthPlanilla(db, monthKey);
+    const bundle = computeAdviceBundle({
+      planilla,
+      debts: debtRows,
+      debtBalances,
+      debtComparison: comparison,
+      projection,
+      monthKey,
+    });
+    setMonthAdviceSummary(bundle.summary);
+    setAdvice(
+      buildLocalMonthAdvice(bundle.summary, {
+        emergencyFundClp: emergency,
+        totalDebtClp: debtTotal,
+        monthlyEssentialsClp: led.fixedExpensesClp + Math.round(led.sharedExpensesClp),
+      }),
+    );
   }, [db, monthKey]);
 
   useEffect(() => {
@@ -246,15 +286,6 @@ export function FinanceProvider({
     daysInMonth: dim,
   });
 
-  const advice = buildAdvice({
-    totalDebtClp,
-    hasOverdueRisk: projection.willRunShort,
-    emergencyFundClp,
-    monthlyEssentialsClp: ledger.fixedExpensesClp + Math.round(ledger.sharedExpensesClp),
-    projectedShortfallClp: projection.projectedShortfallClp,
-    dailyAllowanceClp: projection.dailyAllowanceClp,
-  });
-
   const value = useMemo(
     () => ({
       ready,
@@ -278,6 +309,7 @@ export function FinanceProvider({
       availableClp,
       projection,
       advice,
+      monthAdviceSummary,
       debtComparison,
       importFromParsed,
       openingBalanceClp,
@@ -310,6 +342,7 @@ export function FinanceProvider({
       availableClp,
       projection,
       advice,
+      monthAdviceSummary,
       debtComparison,
       importFromParsed,
       openingBalanceClp,
