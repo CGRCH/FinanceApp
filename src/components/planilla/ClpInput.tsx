@@ -50,7 +50,7 @@ export function ClpInput({ amountClp, onChangeAmount, style, editable = true, sp
       keyboardType="number-pad"
       placeholder="$0"
       placeholderTextColor={colors.textSecondary}
-      accessibilityLabel={rest.accessibilityLabel ?? 'Monto en pesos chilenos'}
+      accessibilityLabel={rest.accessibilityLabel ?? 'Monto en pesos (CLP)'}
       style={[
         styles.input,
         { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceMuted },

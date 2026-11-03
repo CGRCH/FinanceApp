@@ -1,101 +1,183 @@
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ExpenseBreakdownChart } from '@/src/components/charts/ExpenseBreakdownChart';
+import { MonthDistributionChart } from '@/src/components/charts/MonthDistributionChart';
 import { BodyText, Card, MoneyText, Pill, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
+import { dailySpendingExplanation } from '@/src/domain/homeDashboard';
 import { formatClp } from '@/src/domain/money';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing } from '@/src/theme/tokens';
 
-export default function PanelScreen() {
-  const { availableClp, ledger, projection, monthKey } = useFinance();
+function KpiCard({
+  label,
+  amountClp,
+  hint,
+  onPress,
+  large,
+}: {
+  label: string;
+  amountClp: number;
+  hint?: string;
+  onPress?: () => void;
+  large?: boolean;
+}) {
   const colors = useThemeColors();
+  const inner = (
+    <>
+      <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>{label}</Text>
+      {large ? <MoneyText amountClp={amountClp} large /> : <MoneyText amountClp={amountClp} />}
+      {hint ? <BodyText muted>{hint}</BodyText> : null}
+    </>
+  );
+  if (!onPress) {
+    return <Card>{inner}</Card>;
+  }
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button">
+      <Card>{inner}</Card>
+    </Pressable>
+  );
+}
+
+export default function PanelScreen() {
+  const { monthKey, homeDashboard, totalDebtClp, emergencyFundClp } = useFinance();
+  const colors = useThemeColors();
+
+  const totals = homeDashboard?.totals;
+  const projection = homeDashboard?.projection;
+  const incomeClp = totals?.fundTotalClp ?? 0;
+  const availableClp = totals?.availableClp ?? 0;
+  const paidClp = totals?.paidSoFarClp ?? 0;
+  const pendingClp = totals?.pendingOutflowsClp ?? 0;
+  const debtPaidFraction = homeDashboard?.debtProgress.paidFraction ?? null;
 
   return (
     <ScrollView
       style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
       contentContainerStyle={styles.content}
       accessibilityLabel="Panel del mes">
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={[styles.kicker, { color: colors.textSecondary }]}>Mes {monthKey}</Text>
-          <Text style={[styles.title, { color: colors.text }]}>Tu panorama</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ir a planilla del mes"
-          onPress={() => router.push('/(tabs)/planilla')}
-          style={StyleSheet.flatten([styles.fab, { backgroundColor: colors.primary }])}>
-          <Text style={styles.fabText}>+</Text>
-        </Pressable>
+      <View>
+        <Text style={[styles.kicker, { color: colors.textSecondary }]}>Mes {monthKey}</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Inicio</Text>
+        <BodyText muted>Resumen informativo. Edita montos en la Planilla.</BodyText>
       </View>
 
-      <Card accessibilityRole="summary">
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Disponible del mes</Text>
-        <MoneyText amountClp={availableClp} large />
-        <BodyText muted>
-          Fondo {formatClp(ledger.incomeClp)} · Pagado {formatClp(ledger.paidSoFarClp ?? 0)} · Pendiente{' '}
-          {formatClp(ledger.pendingOutflowsClp ?? 0)}
-        </BodyText>
-        <View style={styles.row}>
-          <Pill label={`Ingresos ${formatClp(ledger.incomeClp)}`} tone="ok" />
-          <Pill
-            label={`Gastos ${formatClp(ledger.fixedExpensesClp + ledger.additionalExpensesClp + ledger.sharedExpensesClp)}`}
-            tone="neutral"
+      <KpiCard
+        label="Disponible del mes"
+        amountClp={availableClp}
+        hint={`Ingresos ${formatClp(incomeClp)} − pagado ${formatClp(paidClp)}`}
+        onPress={() => router.push('/(tabs)/planilla')}
+        large
+      />
+
+      <View style={styles.grid}>
+        <View style={styles.gridCell}>
+          <KpiCard
+            label="Ingresos"
+            amountClp={incomeClp}
+            onPress={() => router.push('/(tabs)/planilla')}
           />
         </View>
-      </Card>
+        <View style={styles.gridCell}>
+          <KpiCard
+            label="Gastos pagados"
+            amountClp={paidClp}
+            onPress={() => router.push('/(tabs)/planilla')}
+          />
+        </View>
+        <View style={styles.gridCell}>
+          <KpiCard
+            label="Pendiente por pagar"
+            amountClp={pendingClp}
+            onPress={() => router.push('/(tabs)/planilla')}
+          />
+        </View>
+        <View style={styles.gridCell}>
+          <Pressable onPress={() => router.push('/(tabs)/deudas')} accessibilityRole="button">
+            <Card>
+              <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Deuda total</Text>
+              <MoneyText amountClp={totalDebtClp} />
+              {debtPaidFraction != null ? (
+                <>
+                  <BodyText muted>
+                    Progreso (deudas personales con monto original): {Math.round(debtPaidFraction * 100)}% pagado
+                  </BodyText>
+                  <View style={[styles.progressTrack, { backgroundColor: colors.surfaceMuted }]}>
+                    <View
+                      style={{
+                        width: `${debtPaidFraction * 100}%`,
+                        backgroundColor: colors.primary,
+                        height: '100%',
+                        borderRadius: 4,
+                      }}
+                    />
+                  </View>
+                </>
+              ) : null}
+            </Card>
+          </Pressable>
+        </View>
+      </View>
 
-      {projection.willRunShort ? (
-        <Card style={{ backgroundColor: colors.dangerSoft, borderColor: colors.danger }}>
-          <SectionTitle>Alerta de fin de mes</SectionTitle>
-          <BodyText>
-            Con el ritmo actual podrías terminar con un faltante de{' '}
-            <Text style={{ fontWeight: '700' }}>{formatClp(projection.projectedShortfallClp)}</Text>. Prioriza lo
-            esencial y frena gastos variables un par de días.
+      <KpiCard
+        label="Fondo de emergencia"
+        amountClp={emergencyFundClp}
+        hint="Meta registrada en Ajustes"
+        onPress={() => router.push('/(tabs)/ajustes')}
+      />
+
+      {projection?.willRunShort ? (
+        <Card style={styles.alertCard}>
+          <Text style={[styles.alertTitle, { color: colors.danger }]}>Alerta de fin de mes</Text>
+          <BodyText muted>
+            Proyección: faltante de {formatClp(projection.projectedShortfallClp)} con {projection.daysRemaining} días
+            restantes (según Planilla y ritmo de gastos adicionales).
           </BodyText>
         </Card>
-      ) : (
-        <Card style={{ backgroundColor: colors.primarySoft, borderColor: colors.primary }}>
-          <SectionTitle>Proyección al cierre</SectionTitle>
-          <BodyText>
-            Estimaríamos cerrar con{' '}
-            <Text style={{ fontWeight: '700' }}>{formatClp(projection.projectedEndBalanceClp)}</Text> ({projection.daysRemaining}{' '}
-            días restantes).
-          </BodyText>
-        </Card>
-      )}
+      ) : null}
 
-      <Card>
-        <SectionTitle>Fondos menos gastos</SectionTitle>
-        <MoneyText amountClp={ledger.fondosMenosGastosClp} large />
-        <BodyText muted>Ingresos − ítems ya pagados en planilla.</BodyText>
-      </Card>
-
-      {ledger.reserveClp > 0 ? (
+      {totals && projection ? (
         <Card>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Reserva del mes</Text>
-          <MoneyText amountClp={ledger.reserveClp} />
+          <Text style={[styles.kpiLabel, { color: colors.textSecondary }]}>Cuánto puedes gastar por día</Text>
+          <MoneyText amountClp={projection.dailyAllowanceClp} large />
+          <BodyText muted>{dailySpendingExplanation(totals, projection)}</BodyText>
         </Card>
       ) : null}
 
       <Card>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Cuánto podís gastar por día</Text>
-        <MoneyText amountClp={projection.dailyAllowanceClp} large />
-        <BodyText muted>
-          Referencia para gasto variable, después de lo ya registrado. No incluye cuotas futuras que aún no anotaste.
-        </BodyText>
+        <SectionTitle>Distribución del mes</SectionTitle>
+        <BodyText muted>Tu parte en fijos, adicionales, deudas, diezmo y lo disponible (según Planilla).</BodyText>
+        <MonthDistributionChart
+          slices={homeDashboard?.distribution ?? []}
+          incomeClp={incomeClp}
+          hasData={homeDashboard?.hasDistributionData ?? false}
+        />
       </Card>
 
       <Card>
-        <SectionTitle>Distribución del mes</SectionTitle>
-        <ExpenseBreakdownChart
-          income={ledger.incomeClp}
-          fixed={ledger.fixedExpensesClp}
-          additional={ledger.additionalExpensesClp}
-          shared={ledger.sharedExpensesClp}
-        />
+        <SectionTitle>Próximos pagos</SectionTitle>
+        {(homeDashboard?.upcomingPayments.length ?? 0) === 0 ? (
+          <BodyText muted>No hay ítems pendientes por pagar en la planilla de este mes.</BodyText>
+        ) : (
+          homeDashboard!.upcomingPayments.map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={() => router.push('/(tabs)/planilla')}
+              style={[styles.upcomingRow, { borderColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: '600' }}>{item.label}</Text>
+                <Pill
+                  label={
+                    item.kind === 'debt' ? 'Deuda' : item.kind === 'fixed' ? 'Fijo' : 'Adicional'
+                  }
+                  tone="neutral"
+                />
+              </View>
+              <Text style={{ color: colors.text, fontWeight: '800' }}>{formatClp(item.amountClp)}</Text>
+            </Pressable>
+          ))
+        )}
       </Card>
     </ScrollView>
   );
@@ -104,17 +186,19 @@ export default function PanelScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   kicker: { fontSize: 13, fontWeight: '600' },
   title: { fontSize: 28, fontWeight: '800' },
-  label: { fontSize: 14, fontWeight: '600' },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  fab: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  kpiLabel: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  gridCell: { width: '48%', flexGrow: 1 },
+  progressTrack: { height: 8, borderRadius: 4, overflow: 'hidden', marginTop: spacing.sm },
+  alertCard: { paddingVertical: spacing.sm },
+  alertTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  upcomingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  fabText: { color: '#fff', fontSize: 26, fontWeight: '700', marginTop: -2 },
 });

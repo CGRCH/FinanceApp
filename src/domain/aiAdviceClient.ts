@@ -86,7 +86,7 @@ export function resolveAiBaseUrl(provider: AiAdviceProvider, customBaseUrl?: str
 }
 
 export function buildAiAdvicePrompt(summary: MonthAdviceSummary, previewText: string): string {
-  return `Eres un asesor financiero personal en Chile. Analiza el resumen del mes (montos en CLP enteros) y responde SOLO con JSON válido (sin markdown) con esta forma:
+  return `Eres un asesor financiero personal. Analiza el resumen del mes (montos en CLP enteros) y responde SOLO con JSON válido (sin markdown) con esta forma:
 {
   "payFirst": [{"title": string, "detail": string, "amountClp": number opcional}],
   "postpone": [{"title": string, "detail": string}],
@@ -97,8 +97,8 @@ export function buildAiAdvicePrompt(summary: MonthAdviceSummary, previewText: st
 
 Instrucciones:
 - Prioriza qué pagar primero, qué postergar, riesgo de quedarse sin dinero antes de fin de mes, estrategia de deudas (bola de nieve o avalancha) y pasos concretos.
-- Usa montos en pesos chilenos (enteros) cuando menciones cifras.
-- Tono cercano, claro, sin voseo argentino; español de Chile.
+- Usa montos en pesos chilenos (CLP, enteros) cuando menciones cifras.
+- Tono cercano y claro; español neutro (tú), sin regionalismos ni voseo.
 - No inventes ítems que no aparezcan en el resumen.
 
 Resumen del mes:

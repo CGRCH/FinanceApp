@@ -4,7 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { buildLocalMonthAdvice, type AdviceItem } from '@/src/domain/advice';
+import { buildHomeDashboard, type HomeDashboardData } from '@/src/domain/homeDashboard';
 import { computeAdviceBundle, type MonthAdviceSummary } from '@/src/domain/monthAdviceSummary';
+import { computeMonthTotals } from '@/src/domain/monthPlanilla';
 import { compareStrategies } from '@/src/domain/debtStrategies';
 import {
   buildMonthCompare,
@@ -53,6 +55,8 @@ interface FinanceContextValue {
   projection: ReturnType<typeof computeProjection>;
   advice: AdviceItem[];
   monthAdviceSummary: MonthAdviceSummary | null;
+  homeDashboard: HomeDashboardData | null;
+  totalDebtClp: number;
   debtComparison: ReturnType<typeof compareStrategies> | null;
   importFromParsed: (data: GestiónImportResult) => Promise<{ transactions: number; debts: number }>;
   openingBalanceClp: number;
@@ -110,6 +114,7 @@ export function FinanceProvider({
   const [fixedTemplateRevision, setFixedTemplateRevision] = useState(0);
   const [advice, setAdvice] = useState<AdviceItem[]>([]);
   const [monthAdviceSummary, setMonthAdviceSummary] = useState<MonthAdviceSummary | null>(null);
+  const [homeDashboard, setHomeDashboard] = useState<HomeDashboardData | null>(null);
 
   const notifyFixedTemplateChanged = useCallback(() => {
     setFixedTemplateRevision((n) => n + 1);
@@ -166,7 +171,25 @@ export function FinanceProvider({
       projection,
       monthKey,
     });
+    const planillaTotals = computeMonthTotals(planilla, debtBalances);
+    const homeProjection = computeProjection({
+      balanceNowClp: planillaTotals.availableClp,
+      pendingFixedClp: planillaTotals.pendingOutflowsClp,
+      pendingAdditionalClp: 0,
+      avgDailyVariableClp: avgDaily,
+      dayOfMonth,
+      daysInMonth: dim,
+    });
     setMonthAdviceSummary(bundle.summary);
+    setHomeDashboard(
+      buildHomeDashboard({
+        planilla,
+        totals: planillaTotals,
+        debtBalances,
+        debtRows,
+        projection: homeProjection,
+      }),
+    );
     setAdvice(
       buildLocalMonthAdvice(bundle.summary, {
         emergencyFundClp: emergency,
@@ -313,6 +336,8 @@ export function FinanceProvider({
       projection,
       advice,
       monthAdviceSummary,
+      homeDashboard,
+      totalDebtClp,
       debtComparison,
       importFromParsed,
       openingBalanceClp,
@@ -346,6 +371,8 @@ export function FinanceProvider({
       projection,
       advice,
       monthAdviceSummary,
+      homeDashboard,
+      totalDebtClp,
       debtComparison,
       importFromParsed,
       openingBalanceClp,
