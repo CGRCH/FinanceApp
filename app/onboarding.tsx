@@ -52,7 +52,7 @@ export default function OnboardingScreen() {
       </BodyText>
 
       <Card>
-        <SectionTitle>¿Cómo querís partir?</SectionTitle>
+        <SectionTitle>¿Cómo quieres partir?</SectionTitle>
         <Pressable style={[styles.btn, { backgroundColor: colors.primary }]} onPress={startBlank}>
           <Text style={styles.btnText}>Empezar en blanco</Text>
         </Pressable>

@@ -8,7 +8,10 @@
     "scheme": "financeapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "FinanceApp usa Face ID para desbloquear tu información financiera guardada solo en este dispositivo."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -42,7 +45,13 @@
           "color": "#0B6E4F"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "FinanceApp usa Face ID para desbloquear tu información financiera guardada solo en este dispositivo."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AiAdviceSettingsEditor } from '@/src/components/settings/AiAdviceSettingsEditor';
+import { SecuritySettingsEditor } from '@/src/components/settings/SecuritySettingsEditor';
 import { FixedExpenseTemplateEditor } from '@/src/components/settings/FixedExpenseTemplateEditor';
 import { AccordionSection } from '@/src/components/ui/AccordionSection';
 import { Card, SectionTitle } from '@/src/components/ui/Primitives';
@@ -42,6 +43,10 @@ export default function AjustesScreen() {
           })}
         </View>
       </Card>
+
+      <AccordionSection title="Seguridad">
+        <SecuritySettingsEditor />
+      </AccordionSection>
 
       <AccordionSection title="Gastos fijos">
         <FixedExpenseTemplateEditor />

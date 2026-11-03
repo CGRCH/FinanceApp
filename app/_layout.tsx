@@ -1,11 +1,14 @@
 import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider } from 'expo-sqlite';
 import 'react-native-reanimated';
 
 import { AppLoadingScreen, DatabaseErrorScreen } from '@/src/components/database/DatabaseErrorScreen';
+import { AppLockScreen } from '@/src/components/security/AppLockScreen';
+import { PinSetupScreen } from '@/src/components/security/PinSetupScreen';
+import { AppLockProvider, useAppLock } from '@/src/context/AppLockContext';
 import { FinanceProvider, useFinance } from '@/src/context/FinanceContext';
 import { DATABASE_NAME, resetLocalDatabase } from '@/src/db/databaseLifecycle';
 import { initDatabase } from '@/src/db/repository';
@@ -66,21 +69,41 @@ export default function RootLayout() {
       onError={handleSqliteError}
       options={{ enableChangeListener: false }}>
       <FinanceProvider onRequestRemount={() => setBootAttempt((n) => n + 1)}>
-        <RootStack />
+        <AppLockShell />
       </FinanceProvider>
     </SQLiteProvider>
   );
 }
 
+function AppLockShell() {
+  const { resetLocalData } = useFinance();
+  return (
+    <AppLockProvider onForgotPinReset={resetLocalData}>
+      <RootStack />
+      <AppLockOverlays />
+    </AppLockProvider>
+  );
+}
+
+function AppLockOverlays() {
+  const { ready: financeReady } = useFinance();
+  const { ready, pinConfigured, isUnlocked } = useAppLock();
+  if (!financeReady || !ready) return null;
+  if (!pinConfigured) return <PinSetupScreen />;
+  if (!isUnlocked) return <AppLockScreen />;
+  return null;
+}
+
 function RootStack() {
   const { effectiveScheme, ready, showOnboarding, bootstrapError, slowBootHint, retryBootstrap, resetLocalData } =
     useFinance();
+  const { pinConfigured, isUnlocked, ready: lockReady } = useAppLock();
 
   useEffect(() => {
-    if (ready && showOnboarding && !bootstrapError) {
+    if (ready && lockReady && pinConfigured && isUnlocked && showOnboarding && !bootstrapError) {
       router.replace('/onboarding');
     }
-  }, [ready, showOnboarding, bootstrapError]);
+  }, [ready, lockReady, pinConfigured, isUnlocked, showOnboarding, bootstrapError]);
 
   if (bootstrapError) {
     return (
