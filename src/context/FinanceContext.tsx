@@ -57,6 +57,9 @@ interface FinanceContextValue {
   extraDebtPaymentClp: number;
   retryBootstrap: () => void;
   resetLocalData: () => Promise<void>;
+  /** Incrementa cuando cambia la plantilla de gastos fijos en Ajustes. */
+  fixedTemplateRevision: number;
+  notifyFixedTemplateChanged: () => void;
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
@@ -100,6 +103,11 @@ export function FinanceProvider({
   const [extraDebtPaymentClp, setExtraDebtPaymentClp] = useState(0);
   const [totalDebtClp, setTotalDebtClp] = useState(0);
   const [debtComparison, setDebtComparison] = useState<FinanceContextValue['debtComparison']>(null);
+  const [fixedTemplateRevision, setFixedTemplateRevision] = useState(0);
+
+  const notifyFixedTemplateChanged = useCallback(() => {
+    setFixedTemplateRevision((n) => n + 1);
+  }, []);
 
   const effectiveScheme: 'light' | 'dark' =
     themePreference === 'system' ? (system === 'dark' ? 'dark' : 'light') : themePreference;
@@ -278,6 +286,8 @@ export function FinanceProvider({
       extraDebtPaymentClp,
       retryBootstrap,
       resetLocalData,
+      fixedTemplateRevision,
+      notifyFixedTemplateChanged,
     }),
     [
       ready,
@@ -308,6 +318,8 @@ export function FinanceProvider({
       extraDebtPaymentClp,
       retryBootstrap,
       resetLocalData,
+      fixedTemplateRevision,
+      notifyFixedTemplateChanged,
     ],
   );
 

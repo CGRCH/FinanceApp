@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -47,6 +47,7 @@ function EditableLineRow({
   onPaidChange,
   showPaidToggle,
   splitDivisor,
+  categoryLabelOnly,
 }: {
   line: PlanillaLine;
   onCategoryChange?: (v: string) => void;
@@ -57,6 +58,8 @@ function EditableLineRow({
   onPaidChange?: (paid: boolean) => void;
   showPaidToggle?: boolean;
   splitDivisor?: number | null;
+  /** Nombre solo lectura con el mismo layout que el input editable (flex:1). */
+  categoryLabelOnly?: boolean;
 }) {
   const colors = useThemeColors();
   return (
@@ -74,6 +77,17 @@ function EditableLineRow({
               { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
             ]}
           />
+        ) : categoryLabelOnly ? (
+          <View
+            style={[
+              styles.categoryInputCompact,
+              styles.categoryLabelBox,
+              { borderColor: colors.border, backgroundColor: colors.surface },
+            ]}>
+            <Text style={[styles.categoryLabelText, { color: colors.text }]} numberOfLines={1}>
+              {line.category}
+            </Text>
+          </View>
         ) : (
           <Text style={[styles.lineTitle, { color: colors.text }]} numberOfLines={1}>
             {line.category}
@@ -114,17 +128,28 @@ function EditableLineRow({
 
 export function PlanillaEditor({ monthKey }: Props) {
   const db = useSQLiteContext();
-  const { refresh, refreshMonthIndex } = useFinance();
+  const { refresh, refreshMonthIndex, fixedTemplateRevision } = useFinance();
   const colors = useThemeColors();
   const [planilla, setPlanilla] = useState<MonthPlanilla | null>(null);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [splitExpanded, setSplitExpanded] = useState(false);
 
-  useEffect(() => {
-    loadMonthPlanilla(db, monthKey).then(setPlanilla);
-    listDebts(db).then(setDebts);
+  const reloadPlanilla = useCallback(async () => {
+    const [loaded, debtRows] = await Promise.all([loadMonthPlanilla(db, monthKey), listDebts(db)]);
+    setPlanilla(loaded);
+    setDebts(debtRows);
   }, [db, monthKey]);
+
+  useEffect(() => {
+    void reloadPlanilla();
+  }, [reloadPlanilla, fixedTemplateRevision]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void reloadPlanilla();
+    }, [reloadPlanilla]),
+  );
 
   const debtBalances = useMemo(
     () => Object.fromEntries(debts.map((d) => [d.id, d.balance_clp])),
@@ -257,6 +282,7 @@ export function PlanillaEditor({ monthKey }: Props) {
           <EditableLineRow
             key={line.id}
             line={line}
+            categoryLabelOnly
             readOnly={!editable}
             onAmountChange={(v) => {
               const fixedLines = [...planilla.fixedLines];
@@ -584,12 +610,18 @@ const styles = StyleSheet.create({
   },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: spacing.xs },
-  lineCard: { marginBottom: spacing.sm },
-  lineMainRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  paidInline: { alignItems: 'center', gap: 0, minWidth: 56 },
+  lineCard: { marginBottom: spacing.sm, width: '100%', alignSelf: 'stretch' },
+  lineMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  paidInline: { alignItems: 'center', gap: 0, minWidth: 56, flexShrink: 0 },
   categoryInputCompact: {
     flex: 1,
-    minWidth: 72,
+    minWidth: 0,
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.sm,
@@ -597,7 +629,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  amountCompact: { width: 118, minWidth: 118 },
+  categoryLabelBox: { justifyContent: 'center' },
+  categoryLabelText: { fontSize: 14, fontWeight: '600' },
+  amountCompact: { width: 118, minWidth: 118, flexShrink: 0 },
   lineHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   paidToggle: { alignItems: 'center', gap: 2 },
   fundRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },

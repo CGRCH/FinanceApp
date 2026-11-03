@@ -21,7 +21,7 @@ import { spacing, radii } from '@/src/theme/tokens';
 
 export function FixedExpenseTemplateEditor() {
   const db = useSQLiteContext();
-  const { refresh, refreshMonthIndex } = useFinance();
+  const { refresh, refreshMonthIndex, notifyFixedTemplateChanged } = useFinance();
   const colors = useThemeColors();
   const [template, setTemplate] = useState<FixedExpenseTemplate | null>(null);
   const [saving, setSaving] = useState(false);
@@ -43,11 +43,12 @@ export function FixedExpenseTemplateEditor() {
         setTemplate(next);
         await refreshMonthIndex();
         await refresh();
+        notifyFixedTemplateChanged();
       } finally {
         setSaving(false);
       }
     },
-    [db, refresh, refreshMonthIndex],
+    [db, refresh, refreshMonthIndex, notifyFixedTemplateChanged],
   );
 
   const addItem = () => {

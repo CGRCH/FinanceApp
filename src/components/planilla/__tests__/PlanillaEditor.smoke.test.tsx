@@ -11,6 +11,9 @@ const mockListDebts = jest.fn();
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
+  useFocusEffect: (effect: () => void) => {
+    effect();
+  },
 }));
 
 jest.mock('expo-sqlite', () => ({
@@ -21,6 +24,7 @@ jest.mock('@/src/context/FinanceContext', () => ({
   useFinance: () => ({
     refresh: mockRefresh,
     refreshMonthIndex: mockRefreshMonthIndex,
+    fixedTemplateRevision: 0,
   }),
 }));
 
