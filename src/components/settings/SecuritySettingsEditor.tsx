@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { PinKeypad } from '@/src/components/security/PinKeypad';
+import { PinEntry, usePinEntryClear } from '@/src/components/security/PinEntry';
 import { BodyText } from '@/src/components/ui/Primitives';
 import { LOCK_TIMEOUT_OPTIONS_MS } from '@/src/domain/appLockTiming';
-import { PIN_MAX_LENGTH, PIN_MIN_LENGTH } from '@/src/domain/appLockPin';
 import { useAppLock } from '@/src/context/AppLockContext';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing } from '@/src/theme/tokens';
@@ -25,50 +24,52 @@ export function SecuritySettingsEditor() {
   } = useAppLock();
 
   const [changePhase, setChangePhase] = useState<ChangePhase>('idle');
-  const [pinBuffer, setPinBuffer] = useState('');
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { resetToken, clearPin } = usePinEntryClear();
 
   const resetChange = () => {
     setChangePhase('idle');
-    setPinBuffer('');
     setCurrentPin('');
     setNewPin('');
+    setError(null);
+    clearPin();
   };
 
-  const handlePinInput = (value: string) => {
-    setPinBuffer(value);
-  };
-
-  const advanceChangeStep = async () => {
-    if (pinBuffer.length < PIN_MIN_LENGTH) return;
+  const handlePinSubmit = async (pin: string) => {
+    setError(null);
     if (changePhase === 'current') {
-      setCurrentPin(pinBuffer);
-      setPinBuffer('');
+      setCurrentPin(pin);
       setChangePhase('new');
+      clearPin();
       return;
     }
     if (changePhase === 'new') {
-      setNewPin(pinBuffer);
-      setPinBuffer('');
+      setNewPin(pin);
       setChangePhase('confirmNew');
+      clearPin();
       return;
     }
     if (changePhase === 'confirmNew') {
-      if (pinBuffer !== newPin) {
-        Alert.alert('Cambiar PIN', 'Los PIN nuevos no coinciden.');
+      if (pin !== newPin) {
+        setError('Los PIN nuevos no coinciden.');
         resetChange();
         return;
       }
-      const result = await changePin(currentPin, pinBuffer);
-      if (!result.ok) Alert.alert('Cambiar PIN', result.reason);
-      else Alert.alert('Listo', 'Tu PIN se actualizó correctamente.');
+      const result = await changePin(currentPin, pin);
+      if (!result.ok) {
+        setError(result.reason);
+        clearPin();
+        setChangePhase('current');
+        setCurrentPin('');
+        setNewPin('');
+        return;
+      }
+      Alert.alert('Listo', 'Tu PIN se actualizó correctamente.');
       resetChange();
     }
   };
-
-  const canAdvanceChange =
-    changePhase !== 'idle' && pinBuffer.length >= PIN_MIN_LENGTH && pinBuffer.length <= PIN_MAX_LENGTH;
 
   return (
     <View style={styles.wrap}>
@@ -126,20 +127,17 @@ export function SecuritySettingsEditor() {
             {changePhase === 'current'
               ? 'Ingresa tu PIN actual'
               : changePhase === 'new'
-                ? 'Ingresa tu PIN nuevo'
+                ? 'Ingresa tu PIN nuevo (4 dígitos)'
                 : 'Confirma el PIN nuevo'}
           </Text>
-          <PinKeypad value={pinBuffer} maxLength={PIN_MAX_LENGTH} onChange={handlePinInput} />
-          {canAdvanceChange ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void advanceChangeStep()}
-              style={[styles.btn, { backgroundColor: colors.primarySoft, borderColor: colors.primary }]}>
-              <Text style={{ color: colors.primary, fontWeight: '700' }}>
-                {changePhase === 'confirmNew' ? 'Guardar PIN' : 'Continuar'}
-              </Text>
-            </Pressable>
-          ) : null}
+          {error ? <Text style={{ color: colors.danger, fontWeight: '600' }}>{error}</Text> : null}
+          <PinEntry
+            key={changePhase}
+            resetToken={resetToken}
+            errorMessage={error}
+            onAutoSubmit={handlePinSubmit}
+            onSubmitPin={handlePinSubmit}
+          />
           <Pressable accessibilityRole="button" onPress={resetChange}>
             <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancelar</Text>
           </Pressable>

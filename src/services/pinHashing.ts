@@ -24,7 +24,7 @@ export async function hashPinWithSalt(pin: string, salt: string): Promise<string
 export async function createPinRecord(pin: string): Promise<PinRecord> {
   const salt = await generateSaltHex();
   const hash = await hashPinWithSalt(pin, salt);
-  return { version: 1, salt, hash };
+  return { version: 1, salt, hash, pinLength: pin.length };
 }
 
 export async function digestPinRecordInput(input: string): Promise<string> {

@@ -5,24 +5,16 @@ import { spacing, radii } from '@/src/theme/tokens';
 
 interface Props {
   value: string;
+  /** Siempre 4 en PIN estándar; legacy puede ser 6. */
+  dotCount: number;
   maxLength: number;
-  onChange: (next: string) => void;
+  onDigit: (digit: string) => void;
+  onBackspace: () => void;
   disabled?: boolean;
 }
 
-export function PinKeypad({ value, maxLength, onChange, disabled }: Props) {
+export function PinKeypad({ value, dotCount, maxLength, onDigit, onBackspace, disabled }: Props) {
   const colors = useThemeColors();
-
-  const pressDigit = (d: string) => {
-    if (disabled) return;
-    if (value.length >= maxLength) return;
-    onChange(value + d);
-  };
-
-  const backspace = () => {
-    if (disabled) return;
-    onChange(value.slice(0, -1));
-  };
 
   const rows = [
     ['1', '2', '3'],
@@ -34,7 +26,7 @@ export function PinKeypad({ value, maxLength, onChange, disabled }: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.dots} accessibilityLabel={`PIN ${value.length} de ${maxLength} dígitos`}>
-        {Array.from({ length: maxLength }).map((_, i) => (
+        {Array.from({ length: dotCount }).map((_, i) => (
           <View
             key={i}
             style={[
@@ -58,7 +50,7 @@ export function PinKeypad({ value, maxLength, onChange, disabled }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={isBack ? 'Borrar' : `Dígito ${key}`}
                 disabled={disabled}
-                onPress={() => (isBack ? backspace() : pressDigit(key))}
+                onPress={() => (isBack ? onBackspace() : onDigit(key))}
                 style={({ pressed }) => [
                   styles.key,
                   {

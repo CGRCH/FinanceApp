@@ -1,6 +1,10 @@
 /** Tras esta cantidad de intentos fallidos consecutivos aplica demora. */
 export const PIN_FAILURES_BEFORE_DELAY = 5;
 
+export function attemptsRemainingBeforeDelay(failureCount: number): number {
+  return Math.max(0, PIN_FAILURES_BEFORE_DELAY - failureCount);
+}
+
 /** Demora tras el 5.º fallo: 30 s; desde el 6.º: 1 min por cada fallo extra. */
 export function lockoutDelayMs(failureCount: number): number {
   if (failureCount < PIN_FAILURES_BEFORE_DELAY) return 0;

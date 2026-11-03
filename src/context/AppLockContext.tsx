@@ -11,8 +11,18 @@ import React, {
 import { AppState, type AppStateStatus, Platform } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-import { attemptGate, failuresAfterSuccess, failuresAfterWrongAttempt } from '@/src/domain/appLockAttempts';
-import { validatePinFormat, verifyPinAgainstRecord } from '@/src/domain/appLockPin';
+import {
+  attemptGate,
+  attemptsRemainingBeforeDelay,
+  failuresAfterSuccess,
+  failuresAfterWrongAttempt,
+} from '@/src/domain/appLockAttempts';
+import {
+  isLegacyPinRecord,
+  legacyEntryMaxLength,
+  validatePinFormat,
+  verifyPinAgainstRecord,
+} from '@/src/domain/appLockPin';
 import { shouldLockOnResume } from '@/src/domain/appLockTiming';
 import {
   clearAllAppLockStorage,
@@ -29,19 +39,26 @@ import {
 } from '@/src/services/appLockStorage';
 import { createPinRecord, digestPinRecordInput } from '@/src/services/pinHashing';
 
+export type PinVerifyResult = 'unlocked' | 'migrate' | 'fail' | 'locked';
+
 interface AppLockContextValue {
   ready: boolean;
   pinConfigured: boolean;
   isUnlocked: boolean;
+  hasLegacyPin: boolean;
+  pinMigrationRequired: boolean;
   biometricsEnabled: boolean;
   biometricsAvailable: boolean;
   lockTimeoutMs: number;
   failureCount: number;
   lockoutRemainingMs: number;
+  attemptsRemaining: number;
   webStorageNotice: string | null;
+  legacyEntryMaxLength: number;
   setupPin: (pin: string) => Promise<void>;
   changePin: (currentPin: string, newPin: string) => Promise<{ ok: true } | { ok: false; reason: string }>;
-  verifyAndUnlock: (pin: string) => Promise<boolean>;
+  verifyStandardPin: (pin: string) => Promise<PinVerifyResult>;
+  verifyLegacyPin: (pin: string) => Promise<PinVerifyResult>;
   unlockWithBiometrics: () => Promise<boolean>;
   lockNow: () => void;
   setBiometricsEnabledSetting: (enabled: boolean) => Promise<void>;
@@ -62,6 +79,9 @@ export function AppLockProvider({
   const [ready, setReady] = useState(false);
   const [pinConfigured, setPinConfigured] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [hasLegacyPin, setHasLegacyPin] = useState(false);
+  const [pinMigrationRequired, setPinMigrationRequired] = useState(false);
+  const [legacyEntryMaxLen, setLegacyEntryMaxLen] = useState(6);
   const [biometricsEnabled, setBiometricsEnabledState] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const [lockTimeoutMs, setLockTimeoutMsState] = useState(60_000);
@@ -71,6 +91,13 @@ export function AppLockProvider({
   const backgroundedAtRef = useRef<number | null>(null);
   const pinRecordRef = useRef<Awaited<ReturnType<typeof loadPinRecord>>>(null);
 
+  const syncRecordMeta = useCallback((record: Awaited<ReturnType<typeof loadPinRecord>>) => {
+    pinRecordRef.current = record;
+    setPinConfigured(record != null);
+    setHasLegacyPin(record != null && isLegacyPinRecord(record));
+    setLegacyEntryMaxLen(record ? legacyEntryMaxLength(record) : 6);
+  }, []);
+
   const refreshLockSettings = useCallback(async () => {
     const [record, bio, timeout, failures] = await Promise.all([
       loadPinRecord(),
@@ -78,8 +105,7 @@ export function AppLockProvider({
       loadLockTimeoutMs(),
       loadFailureState(),
     ]);
-    pinRecordRef.current = record;
-    setPinConfigured(record != null);
+    syncRecordMeta(record);
     setBiometricsEnabledState(bio);
     setLockTimeoutMsState(timeout);
     setFailureCount(failures.failureCount);
@@ -92,7 +118,7 @@ export function AppLockProvider({
       const enrolled = hw ? await LocalAuthentication.isEnrolledAsync() : false;
       setBiometricsAvailable(hw && enrolled);
     }
-  }, []);
+  }, [syncRecordMeta]);
 
   useEffect(() => {
     (async () => {
@@ -131,29 +157,40 @@ export function AppLockProvider({
     return attemptGate(failureCount, lastFailureAtMs, Date.now()).remainingMs;
   }, [failureCount, lastFailureAtMs, tick]);
 
+  const attemptsRemaining = attemptsRemainingBeforeDelay(failureCount);
+
+  const registerFailedAttempt = useCallback(async () => {
+    const next = failuresAfterWrongAttempt(failureCount, Date.now());
+    await saveFailureState(next.failureCount, next.lastFailureAtMs);
+    setFailureCount(next.failureCount);
+    setLastFailureAtMs(next.lastFailureAtMs);
+  }, [failureCount]);
+
   const setupPin = useCallback(async (pin: string) => {
-    if (!validatePinFormat(pin)) throw new Error('PIN inválido');
+    if (!validatePinFormat(pin)) throw new Error('El PIN debe tener 4 dígitos.');
     const record = await createPinRecord(pin);
     await savePinRecord(record);
-    pinRecordRef.current = record;
-    setPinConfigured(true);
+    syncRecordMeta(record);
     await saveFailureState(0, null);
     setFailureCount(0);
     setLastFailureAtMs(null);
+    setPinMigrationRequired(false);
     setIsUnlocked(true);
-  }, []);
+  }, [syncRecordMeta]);
 
   const changePin = useCallback(async (currentPin: string, newPin: string) => {
     const record = pinRecordRef.current ?? (await loadPinRecord());
     if (!record) return { ok: false as const, reason: 'No hay PIN configurado.' };
-    const valid = await verifyPinAgainstRecord(currentPin, record, digestPinRecordInput);
+    const valid = await verifyPinAgainstRecord(currentPin, record, digestPinRecordInput, {
+      allowLegacyLength: isLegacyPinRecord(record),
+    });
     if (!valid) return { ok: false as const, reason: 'PIN actual incorrecto.' };
-    if (!validatePinFormat(newPin)) return { ok: false as const, reason: 'El PIN nuevo debe tener 4 a 6 dígitos.' };
+    if (!validatePinFormat(newPin)) return { ok: false as const, reason: 'El PIN nuevo debe tener 4 dígitos.' };
     const next = await createPinRecord(newPin);
     await savePinRecord(next);
-    pinRecordRef.current = next;
+    syncRecordMeta(next);
     return { ok: true as const };
-  }, []);
+  }, [syncRecordMeta]);
 
   const onUnlockSuccess = useCallback(async () => {
     const cleared = failuresAfterSuccess();
@@ -163,24 +200,44 @@ export function AppLockProvider({
     setIsUnlocked(true);
   }, []);
 
-  const verifyAndUnlock = useCallback(
-    async (pin: string) => {
+  const verifyStandardPin = useCallback(
+    async (pin: string): Promise<PinVerifyResult> => {
       const gate = attemptGate(failureCount, lastFailureAtMs, Date.now());
-      if (!gate.allowed) return false;
+      if (!gate.allowed) return 'locked';
+      if (!validatePinFormat(pin)) return 'fail';
       const record = pinRecordRef.current ?? (await loadPinRecord());
-      if (!record) return false;
+      if (!record) return 'fail';
       const valid = await verifyPinAgainstRecord(pin, record, digestPinRecordInput);
       if (!valid) {
-        const next = failuresAfterWrongAttempt(failureCount, Date.now());
-        await saveFailureState(next.failureCount, next.lastFailureAtMs);
-        setFailureCount(next.failureCount);
-        setLastFailureAtMs(next.lastFailureAtMs);
-        return false;
+        await registerFailedAttempt();
+        return 'fail';
+      }
+      if (isLegacyPinRecord(record)) {
+        setPinMigrationRequired(true);
+        return 'migrate';
       }
       await onUnlockSuccess();
-      return true;
+      return 'unlocked';
     },
-    [failureCount, lastFailureAtMs, onUnlockSuccess],
+    [failureCount, lastFailureAtMs, onUnlockSuccess, registerFailedAttempt],
+  );
+
+  const verifyLegacyPin = useCallback(
+    async (pin: string): Promise<PinVerifyResult> => {
+      const gate = attemptGate(failureCount, lastFailureAtMs, Date.now());
+      if (!gate.allowed) return 'locked';
+      const record = pinRecordRef.current ?? (await loadPinRecord());
+      if (!record) return 'fail';
+      const valid = await verifyPinAgainstRecord(pin, record, digestPinRecordInput, { allowLegacyLength: true });
+      if (!valid) {
+        const maxLen = legacyEntryMaxLength(record);
+        if (pin.length >= maxLen) await registerFailedAttempt();
+        return 'fail';
+      }
+      setPinMigrationRequired(true);
+      return 'migrate';
+    },
+    [failureCount, lastFailureAtMs],
   );
 
   const unlockWithBiometrics = useCallback(async () => {
@@ -193,6 +250,11 @@ export function AppLockProvider({
       disableDeviceFallback: true,
     });
     if (!result.success) return false;
+    const record = pinRecordRef.current ?? (await loadPinRecord());
+    if (record && isLegacyPinRecord(record)) {
+      setPinMigrationRequired(true);
+      return true;
+    }
     await onUnlockSuccess();
     return true;
   }, [biometricsAvailable, biometricsEnabled, failureCount, lastFailureAtMs, onUnlockSuccess]);
@@ -215,6 +277,8 @@ export function AppLockProvider({
     await clearAllAppLockStorage();
     pinRecordRef.current = null;
     setPinConfigured(false);
+    setHasLegacyPin(false);
+    setPinMigrationRequired(false);
     setIsUnlocked(true);
     setFailureCount(0);
     setLastFailureAtMs(null);
@@ -226,15 +290,20 @@ export function AppLockProvider({
       ready,
       pinConfigured,
       isUnlocked,
+      hasLegacyPin,
+      pinMigrationRequired,
       biometricsEnabled,
       biometricsAvailable,
       lockTimeoutMs,
       failureCount,
       lockoutRemainingMs,
+      attemptsRemaining,
       webStorageNotice: usesWebPinStorage() ? webPinStorageNotice() : null,
+      legacyEntryMaxLength: legacyEntryMaxLen,
       setupPin,
       changePin,
-      verifyAndUnlock,
+      verifyStandardPin,
+      verifyLegacyPin,
       unlockWithBiometrics,
       lockNow,
       setBiometricsEnabledSetting,
@@ -246,14 +315,19 @@ export function AppLockProvider({
       ready,
       pinConfigured,
       isUnlocked,
+      hasLegacyPin,
+      pinMigrationRequired,
       biometricsEnabled,
       biometricsAvailable,
       lockTimeoutMs,
       failureCount,
       lockoutRemainingMs,
+      attemptsRemaining,
+      legacyEntryMaxLen,
       setupPin,
       changePin,
-      verifyAndUnlock,
+      verifyStandardPin,
+      verifyLegacyPin,
       unlockWithBiometrics,
       lockNow,
       setBiometricsEnabledSetting,

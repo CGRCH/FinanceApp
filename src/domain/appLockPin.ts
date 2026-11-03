@@ -1,18 +1,38 @@
-export const PIN_MIN_LENGTH = 4;
-export const PIN_MAX_LENGTH = 6;
+export const PIN_LENGTH = 4;
+export const LEGACY_PIN_MAX_LENGTH = 6;
+
+/** @deprecated usar PIN_LENGTH */
+export const PIN_MIN_LENGTH = PIN_LENGTH;
+/** @deprecated solo PIN antiguo */
+export const PIN_MAX_LENGTH = LEGACY_PIN_MAX_LENGTH;
 
 export interface PinRecord {
   version: 1;
   salt: string;
   hash: string;
+  /** Longitud del PIN al crear el hash; ausente = PIN antiguo (4–6). */
+  pinLength?: number;
 }
 
 export function validatePinFormat(pin: string): boolean {
-  if (pin.length < PIN_MIN_LENGTH || pin.length > PIN_MAX_LENGTH) return false;
-  return /^\d+$/.test(pin);
+  return pin.length === PIN_LENGTH && /^\d+$/.test(pin);
 }
 
-/** Entrada determinista para SHA-256 (salt nunca se reutiliza sin nuevo hash). */
+export function validateLegacyPinFormat(pin: string): boolean {
+  return pin.length >= PIN_LENGTH && pin.length <= LEGACY_PIN_MAX_LENGTH && /^\d+$/.test(pin);
+}
+
+export function isLegacyPinRecord(record: PinRecord): boolean {
+  return record.pinLength == null || record.pinLength !== PIN_LENGTH;
+}
+
+export function legacyEntryMaxLength(record: PinRecord): number {
+  if (record.pinLength != null && record.pinLength > PIN_LENGTH) {
+    return record.pinLength;
+  }
+  return LEGACY_PIN_MAX_LENGTH;
+}
+
 export function pinDigestInput(salt: string, pin: string): string {
   return `${salt}:${pin}`;
 }
@@ -29,7 +49,11 @@ export function parsePinRecord(raw: string | null): PinRecord | null {
       return null;
     }
     if (!parsed.salt || !parsed.hash) return null;
-    return { version: 1, salt: parsed.salt, hash: parsed.hash };
+    const pinLength =
+      typeof parsed.pinLength === 'number' && parsed.pinLength >= PIN_LENGTH && parsed.pinLength <= LEGACY_PIN_MAX_LENGTH
+        ? parsed.pinLength
+        : undefined;
+    return { version: 1, salt: parsed.salt, hash: parsed.hash, pinLength };
   } catch {
     return null;
   }
@@ -39,8 +63,10 @@ export async function verifyPinAgainstRecord(
   pin: string,
   record: PinRecord,
   digest: (input: string) => Promise<string>,
+  options?: { allowLegacyLength?: boolean },
 ): Promise<boolean> {
-  if (!validatePinFormat(pin)) return false;
+  const okFormat = options?.allowLegacyLength ? validateLegacyPinFormat(pin) : validatePinFormat(pin);
+  if (!okFormat) return false;
   const computed = await digest(pinDigestInput(record.salt, pin));
   return computed === record.hash;
 }

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { PinKeypad } from '@/src/components/security/PinKeypad';
+import { PinEntry, usePinEntryClear } from '@/src/components/security/PinEntry';
 import { BodyText, Card } from '@/src/components/ui/Primitives';
-import { PIN_MAX_LENGTH, PIN_MIN_LENGTH } from '@/src/domain/appLockPin';
+import { attemptsRemainingBeforeDelay } from '@/src/domain/appLockAttempts';
+import { shouldClearPinAfterFailedVerify } from '@/src/domain/pinEntry';
 import { useAppLock } from '@/src/context/AppLockContext';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing } from '@/src/theme/tokens';
@@ -19,40 +20,57 @@ function formatWait(ms: number): string {
 export function AppLockScreen() {
   const colors = useThemeColors();
   const {
-    verifyAndUnlock,
+    verifyStandardPin,
+    verifyLegacyPin,
     unlockWithBiometrics,
     biometricsEnabled,
     biometricsAvailable,
     lockoutRemainingMs,
     resetAppForgotPin,
+    hasLegacyPin,
+    legacyEntryMaxLength,
+    failureCount,
   } = useAppLock();
-  const [pin, setPin] = useState('');
+  const [legacyMode, setLegacyMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forgotStep, setForgotStep] = useState<0 | 1 | 2>(0);
+  const { resetToken, clearPin } = usePinEntryClear();
 
   const lockedOut = lockoutRemainingMs > 0;
 
   useEffect(() => {
-    if (!biometricsEnabled || !biometricsAvailable || lockedOut) return;
+    if (!biometricsEnabled || !biometricsAvailable || lockedOut || legacyMode) return;
     void unlockWithBiometrics();
-  }, [biometricsAvailable, biometricsEnabled, lockedOut, unlockWithBiometrics]);
+  }, [biometricsAvailable, biometricsEnabled, lockedOut, legacyMode, unlockWithBiometrics]);
 
-  useEffect(() => {
-    if (pin.length < PIN_MIN_LENGTH || lockedOut) return;
-    const timer = setTimeout(() => {
-      void (async () => {
-        const ok = await verifyAndUnlock(pin);
-        if (ok) {
-          setPin('');
-          setError(null);
-        } else {
-          setError('PIN incorrecto');
-          setPin('');
-        }
-      })();
-    }, 450);
-    return () => clearTimeout(timer);
-  }, [pin, verifyAndUnlock, lockedOut]);
+  const failMessage = (remaining: number) =>
+    remaining > 0
+      ? `PIN incorrecto. Te quedan ${remaining} intento${remaining === 1 ? '' : 's'} antes de la demora.`
+      : 'PIN incorrecto.';
+
+  const handleStandardSubmit = async (pin: string) => {
+    const result = await verifyStandardPin(pin);
+    if (result === 'unlocked' || result === 'migrate') {
+      setError(null);
+      return;
+    }
+    if (result === 'locked') return;
+    setError(failMessage(attemptsRemainingBeforeDelay(failureCount + 1)));
+    clearPin();
+  };
+
+  const handleLegacySubmit = async (pin: string) => {
+    const result = await verifyLegacyPin(pin);
+    if (result === 'migrate') {
+      setError(null);
+      return;
+    }
+    if (result === 'locked') return;
+    if (shouldClearPinAfterFailedVerify('legacy', pin.length, legacyEntryMaxLength)) {
+      setError(failMessage(attemptsRemainingBeforeDelay(failureCount + 1)));
+      clearPin();
+    }
+  };
 
   const onForgot = () => setForgotStep(1);
 
@@ -69,7 +87,11 @@ export function AppLockScreen() {
     <Modal visible animationType="fade" presentationStyle="fullScreen">
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Text style={[styles.title, { color: colors.text }]}>FinanceApp bloqueada</Text>
-        <BodyText muted>Ingresa tu PIN para continuar. Tus datos siguen solo en este dispositivo.</BodyText>
+        <BodyText muted>
+          {legacyMode
+            ? 'Ingresa tu PIN antiguo (4 a 6 dígitos). Luego crearás uno nuevo de 4 dígitos.'
+            : 'Ingresa tu PIN de 4 dígitos. Tus datos siguen solo en este dispositivo.'}
+        </BodyText>
 
         {lockedOut ? (
           <Card>
@@ -80,8 +102,33 @@ export function AppLockScreen() {
         ) : (
           <>
             {error ? <Text style={{ color: colors.danger, fontWeight: '600' }}>{error}</Text> : null}
-            <PinKeypad value={pin} maxLength={PIN_MAX_LENGTH} onChange={setPin} disabled={lockedOut} />
-            {biometricsAvailable && biometricsEnabled ? (
+            <PinEntry
+              mode={legacyMode ? 'legacy' : 'standard'}
+              maxLength={legacyMode ? legacyEntryMaxLength : undefined}
+              disabled={lockedOut}
+              resetToken={resetToken}
+              errorMessage={error}
+              onSubmitPin={legacyMode ? handleLegacySubmit : handleStandardSubmit}
+              onAutoSubmit={legacyMode ? handleLegacySubmit : handleStandardSubmit}
+            />
+            {hasLegacyPin && !legacyMode ? (
+              <Pressable accessibilityRole="button" onPress={() => setLegacyMode(true)} style={styles.forgot}>
+                <Text style={{ color: colors.primary, fontWeight: '700' }}>Usar PIN antiguo</Text>
+              </Pressable>
+            ) : null}
+            {legacyMode ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setLegacyMode(false);
+                  setError(null);
+                  clearPin();
+                }}
+                style={styles.forgot}>
+                <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Volver al PIN de 4 dígitos</Text>
+              </Pressable>
+            ) : null}
+            {biometricsAvailable && biometricsEnabled && !legacyMode ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => void unlockWithBiometrics()}

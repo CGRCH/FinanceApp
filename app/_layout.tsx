@@ -87,9 +87,10 @@ function AppLockShell() {
 
 function AppLockOverlays() {
   const { ready: financeReady } = useFinance();
-  const { ready, pinConfigured, isUnlocked } = useAppLock();
+  const { ready, pinConfigured, isUnlocked, pinMigrationRequired } = useAppLock();
   if (!financeReady || !ready) return null;
   if (!pinConfigured) return <PinSetupScreen />;
+  if (pinMigrationRequired) return <PinSetupScreen migration />;
   if (!isUnlocked) return <AppLockScreen />;
   return null;
 }
@@ -97,13 +98,13 @@ function AppLockOverlays() {
 function RootStack() {
   const { effectiveScheme, ready, showOnboarding, bootstrapError, slowBootHint, retryBootstrap, resetLocalData } =
     useFinance();
-  const { pinConfigured, isUnlocked, ready: lockReady } = useAppLock();
+  const { pinConfigured, isUnlocked, ready: lockReady, pinMigrationRequired } = useAppLock();
 
   useEffect(() => {
-    if (ready && lockReady && pinConfigured && isUnlocked && showOnboarding && !bootstrapError) {
+    if (ready && lockReady && pinConfigured && isUnlocked && !pinMigrationRequired && showOnboarding && !bootstrapError) {
       router.replace('/onboarding');
     }
-  }, [ready, lockReady, pinConfigured, isUnlocked, showOnboarding, bootstrapError]);
+  }, [ready, lockReady, pinConfigured, isUnlocked, pinMigrationRequired, showOnboarding, bootstrapError]);
 
   if (bootstrapError) {
     return (
