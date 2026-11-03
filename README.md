@@ -33,21 +33,21 @@ npm start
    - Ingresos, gastos fijos y adicionales: agregar, renombrar o eliminar secciones e ítems; montos con **formato CLP** al salir del campo (p. ej. `$1.450.000`).
    - **Dividir cuentas**: activá con toggle qué ítems repartir (sin preselección); elegí entre cuántas personas (stepper ≥ 2); ves total seleccionado y **tu parte** en fila (`tu parte: $X (÷N)`). No altera Pagado/Disponible.
    - **Pagos de deudas** (mes actual): elegí deuda, **pago total** o **abono**; al guardar se descuenta del saldo (reversible si quitás el pago y guardás de nuevo). Historial en pestaña Deudas.
-   - **Ítems pagados**: toggle *Pagado* en fijos, adicionales y pagos de deuda → **Fondo total**, **Pagado hasta ahora**, **Disponible** y pendiente; el Panel usa el disponible.
+   - **Ítems pagados**: toggle *Pagado* en fijos, adicionales y pagos de deuda → **Fondo total**, **Pagado hasta ahora**, **Disponible**, **Pendiente**; el Panel usa el disponible.
    - **Cierre de meses**: solo el **mes actual** es editable; anteriores cerrados, futuros bloqueados. Navegación ‹ › / swipe sin resetear el mes vacío.
 3. **Historial** — tarjetas resumen por mes; **detalle mes a mes** con el mismo navegador ‹ mes › (o swipe) además del listado.
 4. **Panel / Deudas / Consejos / Ajustes** — el **Panel** muestra el **Disponible** (ingresos − ítems marcados pagados en planilla). **Deudas**: CRUD completo, historial de abonos, bola de nieve/avalancha con saldos actuales. Consejos y tema/import en Ajustes.
 
 ## Fórmulas de la planilla (verificables)
 
-Montos en **tu parte** cuando un ítem está en *Dividir cuentas* (monto ÷ personas, redondeo entero CLP).
+Montos en **tu parte** cuando un ítem está en *Dividir cuentas* (monto ÷ personas, redondeo entero CLP) — solo informativo salvo que uses esa sección para planificar.
 
 | Concepto | Fórmula |
 |----------|---------|
-| **Disponible / Fondos menos gastos (app)** | `Ingresos − suma(ítems con Pagado = true)` (fijos, adicionales, hogar, pagos de deuda; compartidos cuentan solo tu parte) |
-| **Pendiente por pagar** | `Total comprometido − pagado` (no incluye la reserva) |
-| **Total comprometido** | Suma de tu parte de fijos + adicionales + hogar + pagos de deuda cargados (pagados o no) |
-| **Quedaría después de pagar todo** | `Ingresos − total comprometido − reserva` |
+| **Disponible / Fondos menos gastos (app)** | `Ingresos − suma(montos ingresados con Pagado = true)` en fijos, adicionales y pagos de deuda (sin dividir por compartidos) |
+| **Pendiente por pagar** | Suma de montos ingresados con Pagado = false (más pagos de deuda pendientes) |
+| **Total registrado (Tu gasto del mes)** | Suma bruta de fijos + adicionales + tu parte hogar + pagos de deuda cargados |
+| **Quedaría después de pagar todo** | `Ingresos − total registrado − reserva` |
 | **Excel clásico (import)** | `Fondos menos gastos = Ingresos − fijos − adicionales` (bruto, sin toggle Pagado ni pagos de deuda de la app) |
 
 Evitá **doble conteo**: un pago de deuda va en *Pagos de deudas*, no repitas el mismo monto como gasto adicional.
