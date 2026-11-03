@@ -395,7 +395,7 @@ export function classifyDatabaseError(error: unknown): {
     return {
       title: 'Base de datos en uso',
       message:
-        'Otra pestaña del navegador puede estar usando FinanceApp y bloquea la base local (OPFS). Cerrá las otras pestañas con la app y probá de nuevo.',
+        'Otra pestaña del navegador puede estar usando FinanceApp y bloquea la base local (OPFS). Cierra las otras pestañas con la app y prueba de nuevo.',
       suggestOtherTabs: true,
       suggestReset: false,
     };
@@ -405,7 +405,7 @@ export function classifyDatabaseError(error: unknown): {
     return {
       title: 'Problema al actualizar datos locales',
       message:
-        'La base quedó en un estado inconsistente tras una actualización. Podés reintentar o reiniciar los datos locales (solo en este navegador).',
+        'La base quedó en un estado inconsistente tras una actualización. Puedes reintentar o reiniciar los datos locales (solo en este navegador).',
       suggestOtherTabs: false,
       suggestReset: true,
     };
@@ -414,7 +414,7 @@ export function classifyDatabaseError(error: unknown): {
   return {
     title: 'No pudimos abrir tu base local',
     message:
-      'Ocurrió un error al iniciar SQLite en este dispositivo. Cerrá otras pestañas con FinanceApp, reintentá o reiniciá los datos locales.',
+      'Ocurrió un error al iniciar SQLite en este dispositivo. Cierra otras pestañas con FinanceApp, reintenta o reinicia los datos locales.',
     suggestOtherTabs: true,
     suggestReset: true,
   };

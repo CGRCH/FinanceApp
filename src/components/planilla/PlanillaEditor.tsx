@@ -18,18 +18,17 @@ import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import { applyDiezmoToPlanilla, diezmoHintLabel, isDiezmoCategory } from '@/src/domain/diezmo';
 import { formatClp } from '@/src/domain/money';
-import { debtDefaultPartialPaymentClp } from '@/src/domain/personalDebt';
 import { lineSplitDivisor } from '@/src/domain/sharedLineSplits';
 import {
   computeMonthTotals,
   computeSharedSplitTotals,
   matchDebtIdForCategory,
-  type DebtPaymentLine,
   type MonthPlanilla,
   type PlanillaLine,
 } from '@/src/domain/monthPlanilla';
 import { computePlanillaBreakdown } from '@/src/domain/planillaBreakdown';
 import { PlanillaCalculationBreakdown } from '@/src/components/planilla/PlanillaCalculationBreakdown';
+import { PlanillaDebtPayments } from '@/src/components/planilla/PlanillaDebtPayments';
 import { listDebts, loadMonthPlanilla, saveMonthPlanilla } from '@/src/db/repository';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing, radii } from '@/src/theme/tokens';
@@ -143,6 +142,7 @@ export function PlanillaEditor({ monthKey }: Props) {
   const [planilla, setPlanilla] = useState<MonthPlanilla | null>(null);
   const [debts, setDebts] = useState<DebtRow[]>([]);
   const [saving, setSaving] = useState(false);
+  const [debtPersisting, setDebtPersisting] = useState(false);
   const [splitExpanded, setSplitExpanded] = useState(false);
 
   const reloadPlanilla = useCallback(async () => {
@@ -210,6 +210,34 @@ export function PlanillaEditor({ monthKey }: Props) {
 
   const activeDebts = useMemo(() => debts.filter((d) => d.balance_clp > 0), [debts]);
 
+  const persistPlanillaNow = useCallback(
+    async (next: MonthPlanilla) => {
+      if (!editable) return;
+      setDebtPersisting(true);
+      try {
+        const linked = {
+          ...next,
+          additionalLines: next.additionalLines.map((l) => ({
+            ...l,
+            debtId: matchDebtIdForCategory(l.category, debts) ?? l.debtId ?? null,
+          })),
+        };
+        await saveMonthPlanilla(db, linked);
+        await refreshMonthIndex();
+        await refresh();
+        const [loaded, debtRows] = await Promise.all([loadMonthPlanilla(db, monthKey), listDebts(db)]);
+        setPlanilla(loaded);
+        setDebts(debtRows);
+      } catch (e) {
+        Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar');
+        await reloadPlanilla();
+      } finally {
+        setDebtPersisting(false);
+      }
+    },
+    [db, debts, editable, monthKey, refresh, refreshMonthIndex, reloadPlanilla],
+  );
+
   const save = useCallback(async () => {
     if (!planilla || !editable) return;
     setSaving(true);
@@ -250,8 +278,8 @@ export function PlanillaEditor({ monthKey }: Props) {
           <Text style={{ color: colors.text, fontWeight: '800' }}>{monthEditabilityLabel(editMode)}</Text>
           <BodyText muted>
             {editMode === 'closed'
-              ? 'Este mes ya quedó registrado. Solo podés editar el mes actual.'
-              : 'Todavía no podés cargar meses futuros.'}
+              ? 'Este mes ya quedó registrado. Solo puedes editar el mes actual.'
+              : 'Todavía no puedes cargar meses futuros.'}
           </BodyText>
         </View>
       ) : null}
@@ -377,122 +405,14 @@ export function PlanillaEditor({ monthKey }: Props) {
 
       {editable ? (
         <Card>
-          <SectionTitle>Pagos de deudas</SectionTitle>
-          <BodyText muted>Elegí deuda, pago total o abono parcial. El saldo de la deuda baja solo si marcás Pagado y guardás.</BodyText>
-          {planilla.debtPaymentLines.map((line, i) => {
-            const debt = debts.find((d) => d.id === line.debtId);
-            return (
-              <View key={line.id} style={[styles.debtPayCard, { borderColor: colors.border }]}>
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Deuda</Text>
-                <View style={styles.debtChipRow}>
-                  {activeDebts.map((d) => (
-                    <Pressable
-                      key={d.id}
-                      onPress={() => {
-                        const debtPaymentLines = [...planilla.debtPaymentLines];
-                        debtPaymentLines[i] = {
-                          ...line,
-                          debtId: d.id,
-                          amountClp: line.paymentKind === 'full' ? d.balance_clp : line.amountClp,
-                        };
-                        setPlanilla({ ...planilla, debtPaymentLines });
-                      }}
-                      style={[
-                        styles.debtChip,
-                        {
-                          borderColor: line.debtId === d.id ? colors.primary : colors.border,
-                          backgroundColor: line.debtId === d.id ? colors.primarySoft : colors.surface,
-                        },
-                      ]}>
-                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 13 }}>{d.name}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>{debt?.name ?? 'Elegí deuda'}</Text>
-                <View style={styles.kindRow}>
-                  <Pressable
-                    onPress={() => {
-                      const debtPaymentLines = [...planilla.debtPaymentLines];
-                      debtPaymentLines[i] = { ...line, paymentKind: 'full', amountClp: debt?.balance_clp ?? 0 };
-                      setPlanilla({ ...planilla, debtPaymentLines });
-                    }}
-                    style={[
-                      styles.kindBtn,
-                      line.paymentKind === 'full' && { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-                      { borderColor: colors.border },
-                    ]}>
-                    <Text style={{ color: colors.text, fontWeight: '700' }}>Pago total</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      const debtPaymentLines = [...planilla.debtPaymentLines];
-                      debtPaymentLines[i] = { ...line, paymentKind: 'partial' };
-                      setPlanilla({ ...planilla, debtPaymentLines });
-                    }}
-                    style={[
-                      styles.kindBtn,
-                      line.paymentKind === 'partial' && { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-                      { borderColor: colors.border },
-                    ]}>
-                    <Text style={{ color: colors.text, fontWeight: '700' }}>Abono</Text>
-                  </Pressable>
-                </View>
-                {line.paymentKind === 'partial' ? (
-                  <ClpInput
-                    amountClp={line.amountClp}
-                    onChangeAmount={(v) => {
-                      const debtPaymentLines = [...planilla.debtPaymentLines];
-                      debtPaymentLines[i] = { ...line, amountClp: v };
-                      setPlanilla({ ...planilla, debtPaymentLines });
-                    }}
-                  />
-                ) : (
-                  <BodyText muted>Se pagará el saldo restante ({formatClp(debt?.balance_clp ?? 0)})</BodyText>
-                )}
-                <View style={styles.paidToggle}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>Pagado</Text>
-                  <Switch
-                    value={!!line.paid}
-                    onValueChange={(paid) => {
-                      const debtPaymentLines = [...planilla.debtPaymentLines];
-                      debtPaymentLines[i] = { ...line, paid };
-                      setPlanilla({ ...planilla, debtPaymentLines });
-                    }}
-                  />
-                </View>
-                <Pressable
-                  onPress={() =>
-                    setPlanilla({
-                      ...planilla,
-                      debtPaymentLines: planilla.debtPaymentLines.filter((_, idx) => idx !== i),
-                    })
-                  }>
-                  <Text style={{ color: colors.danger, fontWeight: '700' }}>Quitar pago</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-          {activeDebts.length === 0 ? (
-            <BodyText muted>No hay deudas activas. Creá una en la pestaña Deudas.</BodyText>
-          ) : (
-            <Pressable
-              onPress={() => {
-                const first = activeDebts[0];
-                const entry: DebtPaymentLine = {
-                  id: `dp-${Date.now()}`,
-                  debtId: first.id,
-                  paymentKind: 'partial',
-                  amountClp: debtDefaultPartialPaymentClp(first),
-                  paid: false,
-                };
-                setPlanilla({ ...planilla, debtPaymentLines: [...planilla.debtPaymentLines, entry] });
-              }}>
-              <Text style={[styles.link, { color: colors.primary }]}>+ Agregar pago de deuda</Text>
-            </Pressable>
-          )}
-          {activeDebts.length > 1 && planilla.debtPaymentLines.length > 0 ? (
-            <BodyText muted>Tip: editá la deuda del pago tocando Deudas si necesitás cambiar cuál abonás.</BodyText>
-          ) : null}
+          <PlanillaDebtPayments
+            db={db}
+            monthKey={monthKey}
+            planilla={planilla}
+            activeDebts={activeDebts}
+            persistPlanilla={persistPlanillaNow}
+            persisting={debtPersisting}
+          />
         </Card>
       ) : null}
 
@@ -520,7 +440,7 @@ export function PlanillaEditor({ monthKey }: Props) {
           <>
             <BodyText muted>Cada ítem puede dividirse con su propio divisor (÷2, ÷3…). Afecta Pagado y Disponible.</BodyText>
             {splittableLines.length === 0 ? (
-              <BodyText muted>Agregá montos en fijos o adicionales para poder dividirlos.</BodyText>
+              <BodyText muted>Agrega montos en fijos o adicionales para poder dividirlos.</BodyText>
             ) : (
               splittableLines.map((line) => {
                 const splits = planilla.sharedLineSplits ?? {};

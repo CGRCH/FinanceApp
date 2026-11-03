@@ -24,7 +24,7 @@ export function DatabaseErrorScreen({ error, onRetry, onResetLocal, resetting }:
       {info.suggestOtherTabs ? (
         <View style={[styles.tip, { backgroundColor: colors.warningSoft, borderColor: colors.warning }]}>
           <Text style={{ color: colors.text, lineHeight: 22 }}>
-            Tip: dejá solo una pestaña con FinanceApp abierta. En Chrome/Safari, revisá pestañas en segundo plano del
+            Tip: deja solo una pestaña con FinanceApp abierta. En Chrome/Safari, revisa pestañas en segundo plano del
             mismo sitio.
           </Text>
         </View>
@@ -63,7 +63,7 @@ export function AppLoadingScreen({ slowHint }: { slowHint?: boolean }) {
       <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Preparando FinanceApp…</Text>
       {slowHint ? (
         <Text style={[styles.slowHint, { color: colors.textSecondary }]}>
-          La primera carga en web puede tardar. Si se demora mucho, cerrá otras pestañas y recargá.
+          La primera carga en web puede tardar. Si se demora mucho, cierra otras pestañas y recarga.
         </Text>
       ) : null}
     </View>

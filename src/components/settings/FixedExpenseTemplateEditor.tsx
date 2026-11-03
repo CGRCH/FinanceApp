@@ -68,7 +68,7 @@ export function FixedExpenseTemplateEditor() {
     if (!template) return;
     const trimmed = name.trim();
     if (!trimmed) {
-      Alert.alert('Nombre vacío', 'Escribí un nombre para el ítem.');
+      Alert.alert('Nombre vacío', 'Escribe un nombre para el ítem.');
       await load();
       return;
     }
@@ -121,7 +121,7 @@ export function FixedExpenseTemplateEditor() {
     <Card>
       <SectionTitle>Gastos fijos</SectionTitle>
       <BodyText muted>
-        Lista de ítems que aparecen en la Planilla de cada mes (montos los cargás mes a mes). Los meses cerrados no
+        Lista de ítems que aparecen en la Planilla de cada mes (montos los cargas mes a mes). Los meses cerrados no
         cambian.
       </BodyText>
       {template.items.map((item, index) => (

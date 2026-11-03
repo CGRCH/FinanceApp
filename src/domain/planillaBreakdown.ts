@@ -81,7 +81,10 @@ function debtRows(
     rows.push({
       id: l.id,
       group: 'debt_payment',
-      label: debtNames[l.debtId] ?? 'Pago de deuda',
+      label:
+        l.installmentIndex != null && l.installmentIndex >= 1
+          ? `${debtNames[l.debtId] ?? 'Pago de deuda'} · Cuota ${l.installmentIndex}`
+          : debtNames[l.debtId] ?? 'Pago de deuda',
       committedClp: committed,
       paid: !!l.paid,
       note: l.paymentKind === 'full' ? 'Pago total' : 'Abono',

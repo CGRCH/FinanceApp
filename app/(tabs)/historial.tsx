@@ -58,7 +58,7 @@ export default function HistorialScreen() {
         </>
       ) : (
         <Card>
-          <BodyText muted>Todavía no hay meses guardados. Completá tu planilla o importá Excel.</BodyText>
+          <BodyText muted>Todavía no hay meses guardados. Completa tu planilla o importa Excel.</BodyText>
         </Card>
       )}
 

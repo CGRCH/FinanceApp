@@ -24,7 +24,7 @@ export default function DeudasScreen() {
         contentContainerStyle={styles.content}>
         <EmptyState
           title="Sin deudas registradas"
-          description="Agregá deudas para ver estrategias de pago y registrar abonos desde la planilla del mes."
+          description="Agrega deudas para ver estrategias de pago y registrar abonos desde la planilla del mes."
         />
         <DebtsManager />
       </ScrollView>

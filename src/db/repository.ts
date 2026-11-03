@@ -14,6 +14,7 @@ import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
 import { normalizePlanillaSplits, pruneSplitsForLines } from '@/src/domain/sharedLineSplits';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
+import { encodeDebtPaymentNote, decodeDebtPaymentNote, type InstallmentPaymentRecord } from '@/src/domain/debtInstallments';
 import { removeDebtFromPlanilla, planillaReferencesDebt } from '@/src/domain/debtCleanup';
 import { applyDiezmoForMonth } from '@/src/domain/diezmo';
 import { isMonthEditable, monthEditability } from '@/src/domain/monthEditability';
@@ -190,11 +191,12 @@ export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string)
         totalClp: row.total_amount_clp ?? row.amount_clp,
       });
     } else if (row.kind === 'debt_payment' && row.debt_id) {
-      const paymentKind = row.note === 'full' ? 'full' : 'partial';
+      const decoded = decodeDebtPaymentNote(row.note);
       debtPaymentLines.push({
         id: row.id,
         debtId: row.debt_id,
-        paymentKind,
+        paymentKind: decoded.paymentKind,
+        installmentIndex: decoded.installmentIndex,
         amountClp: row.amount_clp,
         paid,
       });
@@ -343,7 +345,7 @@ export async function saveMonthPlanilla(
   const allowed =
     isMonthEditable(planilla.monthKey) || (options?.templateSync === true && mode !== 'closed');
   if (!allowed) {
-    throw new Error('Solo podés editar el mes actual. Este mes está cerrado o aún no editable.');
+    throw new Error('Solo puedes editar el mes actual. Este mes está cerrado o aún no editable.');
   }
   planilla = applyDiezmoForMonth(planilla, planilla.monthKey);
   const monthKey = planilla.monthKey;
@@ -443,14 +445,18 @@ export async function saveMonthPlanilla(
       if (amount <= 0) continue;
 
       const name = debtNames.get(line.debtId) ?? 'Deuda';
+      const cuotaLabel =
+        line.installmentIndex != null && line.installmentIndex >= 1
+          ? ` · Cuota ${line.installmentIndex}`
+          : '';
       await insertTransaction(db, {
         type: 'expense',
         kind: 'debt_payment',
-        category: `Pago ${name}`,
+        category: `Pago ${name}${cuotaLabel}`,
         amountClp: amount,
         monthKey,
         debtId: line.debtId,
-        note: line.paymentKind,
+        note: encodeDebtPaymentNote(line),
         isPaid: line.paid,
       });
 
@@ -611,6 +617,33 @@ export async function listDebtPaymentHistory(
      FROM transactions WHERE kind = 'debt_payment'
      ORDER BY created_at DESC`,
   );
+}
+
+export async function listDebtPaymentRecords(
+  db: SQLiteDatabase,
+  debtId: string,
+): Promise<InstallmentPaymentRecord[]> {
+  const rows = await db.getAllAsync<{
+    month_key: string;
+    amount_clp: number;
+    note: string | null;
+    is_paid: number;
+  }>(
+    `SELECT month_key, amount_clp, note, is_paid FROM transactions
+     WHERE kind = 'debt_payment' AND debt_id = ?
+     ORDER BY month_key ASC, created_at ASC`,
+    debtId,
+  );
+  return rows.map((row) => {
+    const decoded = decodeDebtPaymentNote(row.note);
+    return {
+      monthKey: row.month_key,
+      paymentKind: decoded.paymentKind,
+      installmentIndex: decoded.installmentIndex,
+      amountClp: row.amount_clp,
+      paid: row.is_paid === 1,
+    };
+  });
 }
 
 function importedMonthToPlanilla(month: ImportedMonth): MonthPlanilla {

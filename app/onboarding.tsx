@@ -47,7 +47,7 @@ export default function OnboardingScreen() {
       contentContainerStyle={styles.content}>
       <Text style={[styles.title, { color: colors.text }]}>Bienvenido a FinanceApp</Text>
       <BodyText muted>
-        Tus números quedan solo en este dispositivo. Partí en blanco, importá tu planilla Excel o probá con datos de
+        Tus números quedan solo en este dispositivo. Parte en blanco, importa tu planilla Excel o prueba con datos de
         ejemplo ficticios.
       </BodyText>
 

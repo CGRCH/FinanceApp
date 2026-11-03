@@ -124,7 +124,7 @@ export function DebtsManager() {
 
   const saveDebt = async () => {
     if (!form.name.trim()) {
-      Alert.alert('Nombre requerido', 'Ingresá un nombre para la deuda.');
+      Alert.alert('Nombre requerido', 'Ingresa un nombre para la deuda.');
       return;
     }
 
@@ -133,7 +133,7 @@ export function DebtsManager() {
       const installments = Math.max(1, Math.floor(form.installments_total));
       const installment = Math.max(0, form.installment_amount_clp);
       if (total <= 0 || installment <= 0) {
-        Alert.alert('Datos incompletos', 'Indicá monto total y valor de cada cuota.');
+        Alert.alert('Datos incompletos', 'Indica monto total y valor de cada cuota.');
         return;
       }
       const balance = editing ? Math.max(0, form.balance_clp) : total;

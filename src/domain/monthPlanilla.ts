@@ -18,6 +18,8 @@ export interface DebtPaymentLine {
   paymentKind: 'full' | 'partial';
   amountClp: number;
   paid?: boolean;
+  /** Cuota 1..N para deuda personal (persistida en note inst:N). */
+  installmentIndex?: number;
 }
 
 /** @deprecated Import Excel hogar; prefer sharedSplitLineIds en UI. */
