@@ -1,5 +1,6 @@
 {
   "expo": {
+    "owner": "cgrh-dv",
     "name": "FinanceApp",
     "slug": "financeapp",
     "version": "1.0.0",
@@ -60,6 +61,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "690b368d-4b07-4713-a73f-407b807c747e"
+      }
     }
   }
 }
