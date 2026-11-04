@@ -9,6 +9,7 @@ describe('sharedLineSplits', () => {
   it('tu parte por ítem con divisores distintos', () => {
     const line = { id: '1', category: 'Luz', amountClp: 90_000 };
     expect(lineEffectiveClp(line, { '1': 3 })).toBe(30_000);
+    expect(lineEffectiveClp(line, { '1': '2' as unknown as number })).toBe(45_000);
     expect(lineEffectiveClp(line, {})).toBe(90_000);
   });
 });

@@ -1,5 +1,6 @@
 import { yourShareClp } from './sharedExpenses';
-import { lineEffectiveClp, type SharedLineSplits } from './sharedLineSplits';
+import { lineEffectiveClp, lineSplitDivisor, type SharedLineSplits } from './sharedLineSplits';
+import { coerceClpAmount } from './sqliteCoerce';
 import { DEFAULT_FIXED_EXPENSE_TEMPLATE } from './fixedExpenseTemplate';
 
 export const DEFAULT_FIXED_CATEGORIES = DEFAULT_FIXED_EXPENSE_TEMPLATE.items.map((i) => i.name) as readonly string[];
@@ -88,10 +89,11 @@ export function computeSharedSplitTotals(planilla: MonthPlanilla): {
   let selectedTotalClp = 0;
   let yourPartClp = 0;
   for (const line of lines) {
-    const div = splits[line.id];
-    if (!div || div < 2 || line.amountClp <= 0) continue;
-    selectedTotalClp += line.amountClp;
-    yourPartClp += yourShareClp(line.amountClp, div);
+    const div = lineSplitDivisor(splits, line.id);
+    if (!div || coerceClpAmount(line.amountClp) <= 0) continue;
+    const amount = coerceClpAmount(line.amountClp);
+    selectedTotalClp += amount;
+    yourPartClp += yourShareClp(amount, div);
   }
   return { selectedTotalClp, yourPartClp };
 }

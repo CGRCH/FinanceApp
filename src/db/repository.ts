@@ -11,7 +11,8 @@ import {
 import type { MonthComparePoint } from '@/src/domain/monthCompare';
 import type { MonthlyLedger } from '@/src/domain/projection';
 import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
-import { normalizePlanillaSplits, pruneSplitsForLines } from '@/src/domain/sharedLineSplits';
+import { normalizePlanillaSplits, pruneSplitsForLines, splitsFromTransactionRows, mergeSplitMaps, normalizeSharedLineSplits } from '@/src/domain/sharedLineSplits';
+import { coerceClpAmount, coerceSqliteBoolean, coerceSqliteInteger } from '@/src/domain/sqliteCoerce';
 import { yourShareClp } from '@/src/domain/sharedExpenses';
 import { currentMonthKey } from '@/src/domain/money';
 import { encodeDebtPaymentNote, decodeDebtPaymentNote, type InstallmentPaymentRecord } from '@/src/domain/debtInstallments';
@@ -98,6 +99,7 @@ export async function deleteTransactionsForMonth(db: SQLiteDatabase, monthKey: s
 export async function insertTransaction(
   db: SQLiteDatabase,
   input: {
+    id?: string;
     type: TransactionType;
     kind?: ExpenseKind | null;
     category: string;
@@ -110,7 +112,7 @@ export async function insertTransaction(
     isPaid?: boolean;
   },
 ): Promise<string> {
-  const txId = id();
+  const txId = input.id ?? id();
   await db.runAsync(
     `INSERT INTO transactions (id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, is_paid, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -142,23 +144,28 @@ export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string)
   }>('SELECT * FROM month_records WHERE month_key = ?', monthKey);
 
   if (record) {
-    base.incomeClp = record.income_clp;
-    base.reserveClp = record.reserve_clp;
-    base.householdSplitPeople = Math.max(1, record.household_split_people);
-    base.sharedSplitPeople = Math.max(2, record.shared_split_people ?? 2);
+    base.incomeClp = coerceSqliteInteger(record.income_clp);
+    base.reserveClp = coerceSqliteInteger(record.reserve_clp);
+    base.householdSplitPeople = Math.max(1, coerceSqliteInteger(record.household_split_people, 1));
+    base.sharedSplitPeople = Math.max(2, coerceSqliteInteger(record.shared_split_people, 2));
     try {
       base.sharedSplitLineIds = JSON.parse(record.shared_line_ids ?? '[]') as string[];
     } catch {
       base.sharedSplitLineIds = [];
     }
     try {
-      base.sharedLineSplits = JSON.parse(record.shared_line_splits ?? '{}') as Record<string, number>;
+      const parsed = JSON.parse(record.shared_line_splits ?? '{}') as Record<string, unknown>;
+      base.sharedLineSplits = normalizeSharedLineSplits(parsed);
     } catch {
       base.sharedLineSplits = {};
     }
   }
 
   const rows = await listTransactionsForMonth(db, monthKey);
+  const splitsFromRows = splitsFromTransactionRows(rows);
+  if (Object.keys(splitsFromRows).length > 0) {
+    base.sharedLineSplits = mergeSplitMaps(base.sharedLineSplits ?? {}, splitsFromRows);
+  }
   if (rows.length === 0 && !record) return base;
 
   const fixed: MonthPlanilla['fixedLines'] = [];
@@ -167,12 +174,12 @@ export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string)
   const debtPaymentLines: MonthPlanilla['debtPaymentLines'] = [];
 
   for (const row of rows) {
-    const paid = row.is_paid === 1;
+    const paid = coerceSqliteBoolean(row.is_paid);
     if (row.kind === 'fixed') {
       fixed.push({
         id: row.id,
         category: row.category,
-        amountClp: row.amount_clp,
+        amountClp: coerceClpAmount(row.amount_clp),
         debtId: row.debt_id,
         paid,
       });
@@ -180,7 +187,7 @@ export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string)
       additional.push({
         id: row.id,
         category: row.category,
-        amountClp: row.amount_clp,
+        amountClp: coerceClpAmount(row.amount_clp),
         debtId: row.debt_id,
         paid,
       });
@@ -188,7 +195,7 @@ export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string)
       household.push({
         id: row.id,
         category: row.category,
-        totalClp: row.total_amount_clp ?? row.amount_clp,
+        totalClp: coerceClpAmount(row.total_amount_clp ?? row.amount_clp),
       });
     } else if (row.kind === 'debt_payment' && row.debt_id) {
       const decoded = decodeDebtPaymentNote(row.note);
@@ -197,11 +204,11 @@ export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string)
         debtId: row.debt_id,
         paymentKind: decoded.paymentKind,
         installmentIndex: decoded.installmentIndex,
-        amountClp: row.amount_clp,
+        amountClp: coerceClpAmount(row.amount_clp),
         paid,
       });
     } else if (row.type === 'income' && !record) {
-      base.incomeClp += row.amount_clp;
+      base.incomeClp += coerceClpAmount(row.amount_clp);
     }
   }
 
@@ -386,6 +393,7 @@ export async function saveMonthPlanilla(
     if (line.amountClp <= 0) continue;
     const div = splits[line.id];
     await insertTransaction(db, {
+      id: line.id,
       type: 'expense',
       kind: 'fixed',
       category: line.category,
@@ -402,6 +410,7 @@ export async function saveMonthPlanilla(
     if (line.amountClp <= 0) continue;
     const div = splits[line.id];
     await insertTransaction(db, {
+      id: line.id,
       type: 'expense',
       kind: 'additional',
       category: line.category,

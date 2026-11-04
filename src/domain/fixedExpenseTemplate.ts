@@ -1,6 +1,6 @@
 import { monthEditability } from './monthEditability';
 import type { MonthPlanilla, PlanillaLine } from './monthPlanilla';
-import { pruneSplitsForLines } from './sharedLineSplits';
+import { pruneSplitsForLines, normalizeSharedLineSplits } from './sharedLineSplits';
 
 export interface FixedTemplateItem {
   id: string;
@@ -62,12 +62,18 @@ export function applyFixedTemplateToPlanilla(
   }
 
   const fixedLines: PlanillaLine[] = [];
+  const splits = normalizeSharedLineSplits(planilla.sharedLineSplits);
   for (const item of template.items) {
     let line = byId.get(item.id);
     if (!line) {
       const legacy = byName.get(normalizeCategoryName(item.name));
       if (legacy) {
         line = { ...legacy, id: item.id, category: item.name };
+        const div = splits[legacy.id];
+        if (div != null && splits[item.id] == null) {
+          splits[item.id] = div;
+          delete splits[legacy.id];
+        }
       } else {
         line = { id: item.id, category: item.name, amountClp: 0, paid: false };
       }
@@ -78,8 +84,7 @@ export function applyFixedTemplateToPlanilla(
   }
 
   const allowedIds = new Set(template.items.map((i) => i.id));
-  const next: MonthPlanilla = { ...planilla, fixedLines };
-  const splits = { ...(planilla.sharedLineSplits ?? {}) };
+  const next: MonthPlanilla = { ...planilla, fixedLines, sharedLineSplits: splits };
   for (const id of Object.keys(splits)) {
     if (!allowedIds.has(id)) delete splits[id];
   }

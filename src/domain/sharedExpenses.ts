@@ -1,16 +1,12 @@
+import { coerceClpAmount, coerceSqliteInteger } from './sqliteCoerce';
+
 export function yourShareClp(totalClp: number, people: number): number {
-  if (!Number.isInteger(totalClp)) {
-    throw new Error('totalClp debe ser entero');
-  }
-  if (people < 1) {
-    throw new Error('people debe ser al menos 1');
-  }
-  return Math.round(totalClp / people);
+  const total = coerceClpAmount(totalClp);
+  const divisor = Math.max(1, coerceSqliteInteger(people, 1));
+  return Math.round(total / divisor);
 }
 
-export function totalFromYourShareClp(yourShareClp: number, people: number): number {
-  if (people < 1) {
-    throw new Error('people debe ser al menos 1');
-  }
-  return yourShareClp * people;
+export function totalFromYourShareClp(share: number, people: number): number {
+  const divisor = Math.max(1, coerceSqliteInteger(people, 1));
+  return share * divisor;
 }

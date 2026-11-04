@@ -55,8 +55,8 @@ describe('yourShareClp', () => {
     expect(yourShareClp(100_000, 4)).toBe(25_000);
   });
 
-  it('rechaza división inválida', () => {
-    expect(() => yourShareClp(1000, 0)).toThrow();
+  it('trata divisor inválido como 1', () => {
+    expect(yourShareClp(1000, 0)).toBe(1000);
   });
 });
 

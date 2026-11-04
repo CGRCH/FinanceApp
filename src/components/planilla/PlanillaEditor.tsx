@@ -252,6 +252,8 @@ export function PlanillaEditor({ monthKey }: Props) {
       await saveMonthPlanilla(db, linked);
       await refreshMonthIndex();
       await refresh();
+      const loaded = await loadMonthPlanilla(db, monthKey);
+      setPlanilla(loaded);
       Alert.alert('Guardado', 'Planilla del mes actualizada.');
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar');

@@ -1,11 +1,33 @@
+import { coerceClpAmount } from './sqliteCoerce';
+
+/** Separador de miles estilo CL (punto). Fallback si Intl falla en Hermes. */
+export function formatIntegerChileanDots(n: number): string {
+  const abs = Math.abs(Math.round(n));
+  return String(abs).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
 /** Montos en pesos chilenos como enteros (sin decimales). */
 export function formatClp(amountClp: number): string {
-  const sign = amountClp < 0 ? '-$' : '$';
-  return `${sign}${Math.abs(amountClp).toLocaleString('es-CL')}`;
+  const n = coerceClpAmount(amountClp);
+  const sign = n < 0 ? '-$' : '$';
+  try {
+    const formatted = Math.abs(n).toLocaleString('es-CL');
+    if (formatted && !formatted.includes('NaN')) {
+      return `${sign}${formatted}`;
+    }
+  } catch {
+    /* Hermes sin locale */
+  }
+  return `${sign}${formatIntegerChileanDots(Math.abs(n))}`;
 }
 
 export function parseClpInput(raw: string): number | null {
-  const cleaned = raw.replace(/\$/g, '').replace(/\./g, '').replace(/\s/g, '').trim();
+  const cleaned = raw
+    .replace(/\$/g, '')
+    .replace(/\./g, '')
+    .replace(/,/g, '')
+    .replace(/\s/g, '')
+    .trim();
   if (!cleaned) return null;
   const n = Number.parseInt(cleaned, 10);
   if (Number.isNaN(n)) return null;
