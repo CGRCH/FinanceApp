@@ -407,16 +407,14 @@ export function PlanillaEditor({ monthKey }: Props) {
       </Card>
 
       {editable ? (
-        <Card>
-          <PlanillaDebtPayments
-            db={db}
-            monthKey={monthKey}
-            planilla={planilla}
-            activeDebts={activeDebts}
-            persistPlanilla={persistPlanillaNow}
-            persisting={debtPersisting}
-          />
-        </Card>
+        <PlanillaDebtPayments
+          db={db}
+          monthKey={monthKey}
+          planilla={planilla}
+          activeDebts={activeDebts}
+          persistPlanilla={persistPlanillaNow}
+          persisting={debtPersisting}
+        />
       ) : null}
 
       <Card>

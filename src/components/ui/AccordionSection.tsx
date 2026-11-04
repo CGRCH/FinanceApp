@@ -7,13 +7,15 @@ import { spacing } from '@/src/theme/tokens';
 
 interface Props {
   title: string;
+  /** Texto breve bajo el título (p. ej. totales del mes). */
+  summary?: string;
   children: ReactNode;
   /** Igual que Dividir cuentas en Planilla: cerrado por defecto. */
   defaultExpanded?: boolean;
 }
 
 /** Acordeón reutilizable (header + chevron ▸/▾). */
-export function AccordionSection({ title, children, defaultExpanded = false }: Props) {
+export function AccordionSection({ title, summary, children, defaultExpanded = false }: Props) {
   const colors = useThemeColors();
   const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -24,7 +26,14 @@ export function AccordionSection({ title, children, defaultExpanded = false }: P
         style={styles.header}
         accessibilityRole="button"
         accessibilityState={{ expanded }}>
-        <SectionTitle>{title}</SectionTitle>
+        <View style={styles.titleBlock}>
+          <SectionTitle>{title}</SectionTitle>
+          {summary ? (
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600' }} numberOfLines={2}>
+              {summary}
+            </Text>
+          ) : null}
+        </View>
         <Text style={{ color: colors.textSecondary, fontSize: 22, fontWeight: '700' }}>
           {expanded ? '▾' : '▸'}
         </Text>
@@ -41,5 +50,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
+  titleBlock: { flex: 1, gap: 2 },
   body: { gap: spacing.sm, marginTop: spacing.sm },
 });
