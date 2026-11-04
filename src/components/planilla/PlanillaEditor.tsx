@@ -20,18 +20,19 @@ import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import { applyDiezmoToPlanilla, diezmoHintLabel, isDiezmoCategory } from '@/src/domain/diezmo';
 import { formatClp } from '@/src/domain/money';
+import { newPlanillaLineId } from '@/src/domain/planillaLineId';
 import { lineSplitDivisor } from '@/src/domain/sharedLineSplits';
 import {
   computeMonthTotals,
   computeSharedSplitTotals,
-  matchDebtIdForCategory,
   type MonthPlanilla,
   type PlanillaLine,
 } from '@/src/domain/monthPlanilla';
 import { computePlanillaBreakdown } from '@/src/domain/planillaBreakdown';
 import { PlanillaCalculationBreakdown } from '@/src/components/planilla/PlanillaCalculationBreakdown';
 import { PlanillaDebtPayments } from '@/src/components/planilla/PlanillaDebtPayments';
-import { listDebts, loadMonthPlanilla, saveMonthPlanilla } from '@/src/db/repository';
+import { listDebts, loadMonthPlanilla } from '@/src/db/repository';
+import { usePlanillaAutosave } from '@/src/hooks/usePlanillaAutosave';
 import { useThemeColors } from '@/src/hooks/useThemeColors';
 import { spacing, radii } from '@/src/theme/tokens';
 import type { DebtRow } from '@/src/db/schema';
@@ -44,6 +45,8 @@ function EditableLineRow({
   line,
   onCategoryChange,
   onAmountChange,
+  onCategoryBlur,
+  onAmountBlur,
   onRemove,
   categoryEditable,
   readOnly,
@@ -57,6 +60,8 @@ function EditableLineRow({
   line: PlanillaLine;
   onCategoryChange?: (v: string) => void;
   onAmountChange: (clp: number) => void;
+  onCategoryBlur?: () => void;
+  onAmountBlur?: () => void;
   onRemove?: () => void;
   categoryEditable?: boolean;
   readOnly?: boolean;
@@ -77,6 +82,7 @@ function EditableLineRow({
           <TextInput
             value={line.category}
             onChangeText={onCategoryChange}
+            onBlur={onCategoryBlur}
             editable={!readOnly}
             placeholder="Nombre"
             placeholderTextColor={colors.textSecondary}
@@ -104,6 +110,7 @@ function EditableLineRow({
         <ClpInput
           amountClp={line.amountClp}
           onChangeAmount={onAmountChange}
+          onBlur={onAmountBlur}
           style={styles.amountCompact}
           editable={!readOnly && !lockAmount}
           splitDivisor={splitDivisor ?? undefined}
@@ -143,14 +150,26 @@ export function PlanillaEditor({ monthKey }: Props) {
   const colors = useThemeColors();
   const [planilla, setPlanilla] = useState<MonthPlanilla | null>(null);
   const [debts, setDebts] = useState<DebtRow[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [debtPersisting, setDebtPersisting] = useState(false);
+
+  const { updatePlanilla, flushSave, reloadIfClean, resetLocalEdits, status } = usePlanillaAutosave({
+    db,
+    monthKey,
+    editable: isMonthEditable(monthKey),
+    planilla,
+    setPlanilla,
+    setDebts,
+    debts,
+    refresh,
+    refreshMonthIndex,
+    onError: (message) => Alert.alert('Error', message),
+  });
 
   const reloadPlanilla = useCallback(async () => {
     const [loaded, debtRows] = await Promise.all([loadMonthPlanilla(db, monthKey), listDebts(db)]);
+    resetLocalEdits();
     setPlanilla(loaded);
     setDebts(debtRows);
-  }, [db, monthKey]);
+  }, [db, monthKey, resetLocalEdits]);
 
   useEffect(() => {
     void reloadPlanilla();
@@ -158,8 +177,11 @@ export function PlanillaEditor({ monthKey }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      void reloadPlanilla();
-    }, [reloadPlanilla]),
+      void reloadIfClean();
+      return () => {
+        void flushSave();
+      };
+    }, [flushSave, reloadIfClean]),
   );
 
   const debtBalances = useMemo(
@@ -186,16 +208,19 @@ export function PlanillaEditor({ monthKey }: Props) {
     const splits = { ...(planilla.sharedLineSplits ?? {}) };
     if (enabled) splits[lineId] = splits[lineId] ?? 2;
     else delete splits[lineId];
-    setPlanilla({ ...planilla, sharedLineSplits: splits });
+    updatePlanilla({ ...planilla, sharedLineSplits: splits }, 'immediate');
   };
 
   const setLineSplitDivisor = (lineId: string, people: number) => {
     if (!planilla || !editable) return;
     const n = Math.max(2, people);
-    setPlanilla({
-      ...planilla,
-      sharedLineSplits: { ...(planilla.sharedLineSplits ?? {}), [lineId]: n },
-    });
+    updatePlanilla(
+      {
+        ...planilla,
+        sharedLineSplits: { ...(planilla.sharedLineSplits ?? {}), [lineId]: n },
+      },
+      'immediate',
+    );
   };
 
   const removeSplitForLine = (lineId: string) => {
@@ -211,57 +236,9 @@ export function PlanillaEditor({ monthKey }: Props) {
 
   const activeDebts = useMemo(() => debts.filter((d) => d.balance_clp > 0), [debts]);
 
-  const persistPlanillaNow = useCallback(
-    async (next: MonthPlanilla) => {
-      if (!editable) return;
-      setDebtPersisting(true);
-      try {
-        const linked = {
-          ...next,
-          additionalLines: next.additionalLines.map((l) => ({
-            ...l,
-            debtId: matchDebtIdForCategory(l.category, debts) ?? l.debtId ?? null,
-          })),
-        };
-        await saveMonthPlanilla(db, linked);
-        await refreshMonthIndex();
-        await refresh();
-        const [loaded, debtRows] = await Promise.all([loadMonthPlanilla(db, monthKey), listDebts(db)]);
-        setPlanilla(loaded);
-        setDebts(debtRows);
-      } catch (e) {
-        Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar');
-        await reloadPlanilla();
-      } finally {
-        setDebtPersisting(false);
-      }
-    },
-    [db, debts, editable, monthKey, refresh, refreshMonthIndex, reloadPlanilla],
-  );
-
-  const save = useCallback(async () => {
-    if (!planilla || !editable) return;
-    setSaving(true);
-    try {
-      const linked = {
-        ...planilla,
-        additionalLines: planilla.additionalLines.map((l) => ({
-          ...l,
-          debtId: matchDebtIdForCategory(l.category, debts) ?? l.debtId ?? null,
-        })),
-      };
-      await saveMonthPlanilla(db, linked);
-      await refreshMonthIndex();
-      await refresh();
-      const loaded = await loadMonthPlanilla(db, monthKey);
-      setPlanilla(loaded);
-      Alert.alert('Guardado', 'Planilla del mes actualizada.');
-    } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar');
-    } finally {
-      setSaving(false);
-    }
-  }, [planilla, db, debts, refresh, refreshMonthIndex, editable]);
+  const flushOnBlur = useCallback(() => {
+    void flushSave();
+  }, [flushSave]);
 
   if (!planilla || !totals || !shared) {
     return (
@@ -312,7 +289,8 @@ export function PlanillaEditor({ monthKey }: Props) {
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Total del mes</Text>
         <ClpInput
           amountClp={planilla.incomeClp}
-          onChangeAmount={(v) => setPlanilla(applyDiezmoToPlanilla({ ...planilla, incomeClp: v }))}
+          onChangeAmount={(v) => updatePlanilla(applyDiezmoToPlanilla({ ...planilla, incomeClp: v }), 'immediate')}
+          onBlur={flushOnBlur}
           editable={editable}
         />
       </Card>
@@ -331,13 +309,14 @@ export function PlanillaEditor({ monthKey }: Props) {
               if (isDiezmoCategory(line.category)) return;
               const fixedLines = [...planilla.fixedLines];
               fixedLines[i] = { ...line, amountClp: v };
-              setPlanilla({ ...planilla, fixedLines });
+              updatePlanilla({ ...planilla, fixedLines }, 'debounced');
             }}
+            onAmountBlur={flushOnBlur}
             showPaidToggle
             onPaidChange={(paid) => {
               const fixedLines = [...planilla.fixedLines];
               fixedLines[i] = { ...line, paid };
-              setPlanilla({ ...planilla, fixedLines });
+              updatePlanilla({ ...planilla, fixedLines }, 'immediate');
             }}
             splitDivisor={lineSplitDivisor(planilla.sharedLineSplits ?? {}, line.id)}
           />
@@ -366,25 +345,30 @@ export function PlanillaEditor({ monthKey }: Props) {
             onCategoryChange={(v) => {
               const additionalLines = [...planilla.additionalLines];
               additionalLines[i] = { ...line, category: v };
-              setPlanilla({ ...planilla, additionalLines });
+              updatePlanilla({ ...planilla, additionalLines }, 'debounced');
             }}
+            onCategoryBlur={flushOnBlur}
             onAmountChange={(v) => {
               const additionalLines = [...planilla.additionalLines];
               additionalLines[i] = { ...line, amountClp: v };
-              setPlanilla({ ...planilla, additionalLines });
+              updatePlanilla({ ...planilla, additionalLines }, 'debounced');
             }}
+            onAmountBlur={flushOnBlur}
             onRemove={() =>
-              setPlanilla({
-                ...planilla,
-                additionalLines: planilla.additionalLines.filter((_, idx) => idx !== i),
-                sharedLineSplits: removeSplitForLine(line.id),
-              })
+              updatePlanilla(
+                {
+                  ...planilla,
+                  additionalLines: planilla.additionalLines.filter((_, idx) => idx !== i),
+                  sharedLineSplits: removeSplitForLine(line.id),
+                },
+                'immediate',
+              )
             }
             showPaidToggle
             onPaidChange={(paid) => {
               const additionalLines = [...planilla.additionalLines];
               additionalLines[i] = { ...line, paid };
-              setPlanilla({ ...planilla, additionalLines });
+              updatePlanilla({ ...planilla, additionalLines }, 'immediate');
             }}
             splitDivisor={lineSplitDivisor(planilla.sharedLineSplits ?? {}, line.id)}
           />
@@ -392,13 +376,16 @@ export function PlanillaEditor({ monthKey }: Props) {
         {editable ? (
         <Pressable
           onPress={() =>
-            setPlanilla({
-              ...planilla,
-              additionalLines: [
-                ...planilla.additionalLines,
-                { id: `a-${Date.now()}`, category: '', amountClp: 0 },
-              ],
-            })
+            updatePlanilla(
+              {
+                ...planilla,
+                additionalLines: [
+                  ...planilla.additionalLines,
+                  { id: newPlanillaLineId('additional'), category: '', amountClp: 0 },
+                ],
+              },
+              'immediate',
+            )
           }>
           <Text style={[styles.link, { color: colors.primary }]}>+ Agregar gasto adicional</Text>
         </Pressable>
@@ -412,8 +399,10 @@ export function PlanillaEditor({ monthKey }: Props) {
           monthKey={monthKey}
           planilla={planilla}
           activeDebts={activeDebts}
-          persistPlanilla={persistPlanillaNow}
-          persisting={debtPersisting}
+          persistPlanilla={async (next) => {
+            updatePlanilla(next, 'immediate');
+          }}
+          persisting={status === 'saving' || status === 'pending'}
         />
       ) : null}
 
@@ -421,7 +410,8 @@ export function PlanillaEditor({ monthKey }: Props) {
         <SectionTitle>Reserva</SectionTitle>
         <ClpInput
           amountClp={planilla.reserveClp}
-          onChangeAmount={(v) => setPlanilla({ ...planilla, reserveClp: v })}
+          onChangeAmount={(v) => updatePlanilla({ ...planilla, reserveClp: v }, 'debounced')}
+          onBlur={flushOnBlur}
           editable={editable}
         />
       </Card>
@@ -505,13 +495,22 @@ export function PlanillaEditor({ monthKey }: Props) {
         {breakdown ? <PlanillaCalculationBreakdown breakdown={breakdown} /> : null}
       </Card>
 
-      {editable ? (
-      <Pressable
-        disabled={saving}
-        onPress={save}
-        style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}>
-        <Text style={styles.saveBtnText}>{saving ? 'Guardando…' : 'Guardar planilla del mes'}</Text>
-      </Pressable>
+      {editable && status !== 'idle' ? (
+        <Text
+          style={[
+            styles.saveHint,
+            {
+              color:
+                status === 'error' ? colors.danger : status === 'saved' ? colors.primary : colors.textSecondary,
+            },
+          ]}
+          accessibilityLiveRegion="polite">
+          {status === 'error'
+            ? 'Error al guardar'
+            : status === 'saved'
+              ? 'Guardado'
+              : 'Guardando…'}
+        </Text>
       ) : null}
     </KeyboardAwareScrollView>
   );
@@ -597,6 +596,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  saveBtn: { borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  saveHint: { textAlign: 'center', fontSize: 13, fontWeight: '600', marginTop: spacing.xs },
 });

@@ -11,6 +11,7 @@ import {
   type InstallmentPaymentRecord,
 } from '@/src/domain/debtInstallments';
 import { formatClp } from '@/src/domain/money';
+import { newPlanillaLineId } from '@/src/domain/planillaLineId';
 import { monthKeyToLabel } from '@/src/domain/monthPlanilla';
 import type { DebtPaymentLine, MonthPlanilla } from '@/src/domain/monthPlanilla';
 import { debtDefaultPartialPaymentClp } from '@/src/domain/personalDebt';
@@ -208,7 +209,7 @@ export function PlanillaDebtPayments({ db, monthKey, planilla, activeDebts, pers
         <Pressable
           onPress={() => {
             const fullLine: DebtPaymentLine = {
-              id: `dp-${Date.now()}`,
+              id: newPlanillaLineId('debt'),
               debtId: debt.id,
               paymentKind: 'full',
               amountClp: debt.balance_clp,
@@ -222,7 +223,7 @@ export function PlanillaDebtPayments({ db, monthKey, planilla, activeDebts, pers
         <Pressable
           onPress={() => {
             const partial: DebtPaymentLine = {
-              id: `dp-${Date.now()}`,
+              id: newPlanillaLineId('debt'),
               debtId: debt.id,
               paymentKind: 'partial',
               amountClp: debtDefaultPartialPaymentClp(debt),

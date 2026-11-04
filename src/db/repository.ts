@@ -13,9 +13,8 @@ import type { MonthlyLedger } from '@/src/domain/projection';
 import type { ImportedDebt, ImportedMonth } from '@/src/domain/xlsxGestión';
 import { normalizePlanillaSplits, pruneSplitsForLines, splitsFromTransactionRows, mergeSplitMaps, normalizeSharedLineSplits } from '@/src/domain/sharedLineSplits';
 import { coerceClpAmount, coerceSqliteBoolean, coerceSqliteInteger } from '@/src/domain/sqliteCoerce';
-import { yourShareClp } from '@/src/domain/sharedExpenses';
+import { decodeDebtPaymentNote, type InstallmentPaymentRecord } from '@/src/domain/debtInstallments';
 import { currentMonthKey } from '@/src/domain/money';
-import { encodeDebtPaymentNote, decodeDebtPaymentNote, type InstallmentPaymentRecord } from '@/src/domain/debtInstallments';
 import { removeDebtFromPlanilla, planillaReferencesDebt } from '@/src/domain/debtCleanup';
 import { applyDiezmoForMonth } from '@/src/domain/diezmo';
 import { isMonthEditable, monthEditability } from '@/src/domain/monthEditability';
@@ -28,6 +27,7 @@ import {
   serializeFixedExpenseTemplate,
   type FixedExpenseTemplate,
 } from '@/src/domain/fixedExpenseTemplate';
+import { buildMonthTransactionWrites, ensurePlanillaLineIds } from '@/src/domain/planillaPersistence';
 
 import { CREATE_STATEMENTS, type DebtRow, type ExpenseKind, type TransactionRow, type TransactionType } from './schema';
 
@@ -130,6 +130,95 @@ export async function insertTransaction(
     new Date().toISOString(),
   );
   return txId;
+}
+
+export async function upsertTransaction(
+  db: SQLiteDatabase,
+  input: {
+    id: string;
+    type: TransactionType;
+    kind?: ExpenseKind | null;
+    category: string;
+    amountClp: number;
+    totalAmountClp?: number;
+    splitPeople?: number;
+    debtId?: string | null;
+    monthKey?: string;
+    note?: string;
+    isPaid?: boolean;
+  },
+): Promise<string> {
+  const txId = input.id;
+  const createdAt = new Date().toISOString();
+  await db.runAsync(
+    `INSERT INTO transactions (id, type, kind, category, amount_clp, total_amount_clp, split_people, debt_id, month_key, note, is_paid, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       type = excluded.type,
+       kind = excluded.kind,
+       category = excluded.category,
+       amount_clp = excluded.amount_clp,
+       total_amount_clp = excluded.total_amount_clp,
+       split_people = excluded.split_people,
+       debt_id = excluded.debt_id,
+       month_key = excluded.month_key,
+       note = excluded.note,
+       is_paid = excluded.is_paid`,
+    txId,
+    input.type,
+    input.kind ?? null,
+    input.category,
+    input.amountClp,
+    input.totalAmountClp ?? null,
+    input.splitPeople ?? null,
+    input.debtId ?? null,
+    input.monthKey ?? currentMonthKey(),
+    input.note ?? null,
+    input.isPaid ? 1 : 0,
+    createdAt,
+  );
+  return txId;
+}
+
+async function syncMonthTransactions(
+  db: SQLiteDatabase,
+  planilla: MonthPlanilla,
+  options: { applyDebtPayments: boolean },
+): Promise<{ debtId: string; amountClp: number }[]> {
+  const monthKey = planilla.monthKey;
+  const debtNames = new Map((await listDebts(db)).map((d) => [d.id, d.name]));
+  const debtBalances = await getDebtBalances(db);
+  const writes = buildMonthTransactionWrites(planilla, {
+    debtNames,
+    debtBalances,
+    applyDebtPayments: options.applyDebtPayments,
+  });
+  const desiredIds = new Set(writes.map((w) => w.id));
+  const existing = await listTransactionsForMonth(db, monthKey);
+  for (const row of existing) {
+    if (!desiredIds.has(row.id)) {
+      await db.runAsync('DELETE FROM transactions WHERE id = ?', row.id);
+    }
+  }
+  for (const w of writes) {
+    await upsertTransaction(db, w);
+  }
+
+  const resolvedPayments: { debtId: string; amountClp: number }[] = [];
+  if (options.applyDebtPayments) {
+    const working = { ...debtBalances };
+    for (const line of planilla.debtPaymentLines) {
+      if (!line.paid) continue;
+      const balance = working[line.debtId] ?? 0;
+      if (balance <= 0) continue;
+      const amount =
+        line.paymentKind === 'full' ? balance : Math.max(0, Math.min(line.amountClp, balance));
+      if (amount <= 0) continue;
+      resolvedPayments.push({ debtId: line.debtId, amountClp: amount });
+      working[line.debtId] = balance - amount;
+    }
+  }
+  return resolvedPayments;
 }
 
 export async function loadMonthPlanillaRaw(db: SQLiteDatabase, monthKey: string): Promise<MonthPlanilla> {
@@ -354,7 +443,7 @@ export async function saveMonthPlanilla(
   if (!allowed) {
     throw new Error('Solo puedes editar el mes actual. Este mes está cerrado o aún no editable.');
   }
-  planilla = applyDiezmoForMonth(planilla, planilla.monthKey);
+  planilla = ensurePlanillaLineIds(applyDiezmoForMonth(planilla, planilla.monthKey));
   const monthKey = planilla.monthKey;
   const splits = pruneSplitsForLines(planilla);
   const legacyIds = Object.keys(splits);
@@ -381,102 +470,16 @@ export async function saveMonthPlanilla(
     new Date().toISOString(),
   );
 
-  if (options?.applyDebtPayments !== false) {
+  const shouldApplyDebtPayments = options?.applyDebtPayments !== false;
+  if (shouldApplyDebtPayments) {
     await revertMonthDebtPayments(db, monthKey);
   }
 
-  await deleteTransactionsForMonth(db, monthKey);
+  const resolvedPayments = await syncMonthTransactions(db, planilla, {
+    applyDebtPayments: shouldApplyDebtPayments,
+  });
 
-  const debtNames = new Map((await listDebts(db)).map((d) => [d.id, d.name]));
-
-  for (const line of planilla.fixedLines) {
-    if (line.amountClp <= 0) continue;
-    const div = splits[line.id];
-    await insertTransaction(db, {
-      id: line.id,
-      type: 'expense',
-      kind: 'fixed',
-      category: line.category,
-      amountClp: line.amountClp,
-      totalAmountClp: div && div >= 2 ? line.amountClp : undefined,
-      splitPeople: div && div >= 2 ? div : undefined,
-      monthKey,
-      debtId: line.debtId,
-      isPaid: line.paid,
-    });
-  }
-
-  for (const line of planilla.additionalLines) {
-    if (line.amountClp <= 0) continue;
-    const div = splits[line.id];
-    await insertTransaction(db, {
-      id: line.id,
-      type: 'expense',
-      kind: 'additional',
-      category: line.category,
-      amountClp: line.amountClp,
-      totalAmountClp: div && div >= 2 ? line.amountClp : undefined,
-      splitPeople: div && div >= 2 ? div : undefined,
-      monthKey,
-      debtId: line.debtId ?? null,
-      isPaid: line.paid,
-    });
-  }
-
-  for (const line of planilla.householdLines) {
-    if (line.totalClp <= 0) continue;
-    const hn = Math.max(1, planilla.householdSplitPeople);
-    const share = yourShareClp(line.totalClp, hn);
-    await insertTransaction(db, {
-      type: 'expense',
-      kind: 'household',
-      category: line.category,
-      amountClp: share,
-      totalAmountClp: line.totalClp,
-      splitPeople: hn,
-      monthKey,
-    });
-  }
-
-  let resolvedPayments: { debtId: string; amountClp: number }[] = [];
-  if (options?.applyDebtPayments !== false && planilla.debtPaymentLines.length > 0) {
-    const balances = await getDebtBalances(db);
-    const working = { ...balances };
-
-    for (const line of planilla.debtPaymentLines) {
-      const balance = working[line.debtId] ?? 0;
-      if (balance <= 0) continue;
-
-      const amount =
-        line.paymentKind === 'full'
-          ? balance
-          : Math.max(0, Math.min(line.amountClp, balance));
-      if (amount <= 0) continue;
-
-      const name = debtNames.get(line.debtId) ?? 'Deuda';
-      const cuotaLabel =
-        line.installmentIndex != null && line.installmentIndex >= 1
-          ? ` · Cuota ${line.installmentIndex}`
-          : '';
-      await insertTransaction(db, {
-        type: 'expense',
-        kind: 'debt_payment',
-        category: `Pago ${name}${cuotaLabel}`,
-        amountClp: amount,
-        monthKey,
-        debtId: line.debtId,
-        note: encodeDebtPaymentNote(line),
-        isPaid: line.paid,
-      });
-
-      if (line.paid) {
-        resolvedPayments.push({ debtId: line.debtId, amountClp: amount });
-        working[line.debtId] = balance - amount;
-      }
-    }
-  }
-
-  if (options?.applyDebtPayments !== false && resolvedPayments.length > 0) {
+  if (shouldApplyDebtPayments && resolvedPayments.length > 0) {
     await applyDebtPayments(db, resolvedPayments);
   }
 }

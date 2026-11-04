@@ -35,10 +35,11 @@ export function ClpInput({ amountClp, onChangeAmount, style, editable = true, sp
         setFocused(true);
         setDraft(amountClp > 0 ? String(amountClp) : '');
       }}
-      onBlur={() => {
+      onBlur={(e) => {
         setFocused(false);
         const parsed = parseClpInput(draft) ?? 0;
         onChangeAmount(parsed);
+        rest.onBlur?.(e);
       }}
       onChangeText={(t) => {
         setDraft(t);

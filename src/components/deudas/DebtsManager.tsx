@@ -6,7 +6,7 @@ import { ClpInput } from '@/src/components/planilla/ClpInput';
 import { KeyboardAwareScrollView } from '@/src/components/ui/KeyboardAwareScrollView';
 import { BodyText, Card, MoneyText, Pill, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
-import { formatClp } from '@/src/domain/money';
+import { newPlanillaLineId } from '@/src/domain/planillaLineId';
 import { monthKeyToLabel } from '@/src/domain/monthPlanilla';
 import {
   debtTypeLabel,
