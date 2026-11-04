@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { ClpInput } from '@/src/components/planilla/ClpInput';
+import { KeyboardAwareScrollView } from '@/src/components/ui/KeyboardAwareScrollView';
 import { BodyText, Card, MoneyText, Pill, SectionTitle } from '@/src/components/ui/Primitives';
 import { useFinance } from '@/src/context/FinanceContext';
 import { formatClp } from '@/src/domain/money';
@@ -301,7 +302,11 @@ export function DebtsManager() {
 
       <Modal visible={modalOpen} animationType="slide" transparent onRequestClose={() => setModalOpen(false)}>
         <View style={styles.modalBackdrop}>
-          <ScrollView contentContainerStyle={styles.modalScroll}>
+          <KeyboardAwareScrollView
+            style={styles.modalScrollHost}
+            contentContainerStyle={styles.modalScroll}
+            extraBottomPadding={spacing.md}
+            keyboardShouldPersistTaps="handled">
             <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
                 {editing ? 'Editar deuda' : 'Nueva deuda'}
@@ -410,7 +415,7 @@ export function DebtsManager() {
                 </Pressable>
               </View>
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </Modal>
     </>
@@ -436,6 +441,7 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: '100%', borderRadius: 4 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalScrollHost: { flex: 1 },
   modalScroll: { flexGrow: 1, justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.lg, gap: spacing.sm },
   modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: spacing.xs },

@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider } from 'expo-sqlite';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
 import { AppLoadingScreen, DatabaseErrorScreen } from '@/src/components/database/DatabaseErrorScreen';
@@ -62,16 +63,18 @@ export default function RootLayout() {
   }
 
   return (
-    <SQLiteProvider
-      key={`sqlite-${bootAttempt}`}
-      databaseName={DATABASE_NAME}
-      onInit={initDatabase}
-      onError={handleSqliteError}
-      options={{ enableChangeListener: false }}>
-      <FinanceProvider onRequestRemount={() => setBootAttempt((n) => n + 1)}>
-        <AppLockShell />
-      </FinanceProvider>
-    </SQLiteProvider>
+    <SafeAreaProvider>
+      <SQLiteProvider
+        key={`sqlite-${bootAttempt}`}
+        databaseName={DATABASE_NAME}
+        onInit={initDatabase}
+        onError={handleSqliteError}
+        options={{ enableChangeListener: false }}>
+        <FinanceProvider onRequestRemount={() => setBootAttempt((n) => n + 1)}>
+          <AppLockShell />
+        </FinanceProvider>
+      </SQLiteProvider>
+    </SafeAreaProvider>
   );
 }
 

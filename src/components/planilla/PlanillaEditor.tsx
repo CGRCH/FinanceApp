@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -11,6 +10,8 @@ import {
   View,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+
+import { KeyboardAwareScrollView } from '@/src/components/ui/KeyboardAwareScrollView';
 
 import { ClpInput } from '@/src/components/planilla/ClpInput';
 import { AccordionSection } from '@/src/components/ui/AccordionSection';
@@ -271,10 +272,10 @@ export function PlanillaEditor({ monthKey }: Props) {
   }
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled">
+      extraBottomPadding={spacing.lg}>
       {!editable ? (
         <View style={[styles.closedBanner, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
           <Text style={{ color: colors.text, fontWeight: '800' }}>{monthEditabilityLabel(editMode)}</Text>
@@ -514,13 +515,13 @@ export function PlanillaEditor({ monthKey }: Props) {
         <Text style={styles.saveBtnText}>{saving ? 'Guardando…' : 'Guardar planilla del mes'}</Text>
       </Pressable>
       ) : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  content: { padding: spacing.md, gap: spacing.md },
   closedBanner: {
     borderWidth: 1,
     borderRadius: radii.md,

@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MonthDistributionChart } from '@/src/components/charts/MonthDistributionChart';
+import { KeyboardAwareScrollView } from '@/src/components/ui/KeyboardAwareScrollView';
 import { BodyText, Card, MoneyText, Pill, SectionTitle } from '@/src/components/ui/Primitives';
+import { SafeScreen } from '@/src/components/ui/SafeScreen';
 import { useFinance } from '@/src/context/FinanceContext';
 import { dailySpendingExplanation } from '@/src/domain/homeDashboard';
 import { formatClp } from '@/src/domain/money';
@@ -53,10 +55,11 @@ export default function PanelScreen() {
   const debtPaidFraction = homeDashboard?.debtProgress.paidFraction ?? null;
 
   return (
-    <ScrollView
-      style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
-      contentContainerStyle={styles.content}
-      accessibilityLabel="Panel del mes">
+    <SafeScreen>
+      <KeyboardAwareScrollView
+        style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
+        contentContainerStyle={styles.content}
+        accessibilityLabel="Panel del mes">
       <View>
         <Text style={[styles.kicker, { color: colors.textSecondary }]}>Mes {monthKey}</Text>
         <Text style={[styles.title, { color: colors.text }]}>Inicio</Text>
@@ -179,13 +182,14 @@ export default function PanelScreen() {
           ))
         )}
       </Card>
-    </ScrollView>
+      </KeyboardAwareScrollView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  content: { padding: spacing.md, gap: spacing.md },
   kicker: { fontSize: 13, fontWeight: '600' },
   title: { fontSize: 28, fontWeight: '800' },
   kpiLabel: { fontSize: 14, fontWeight: '600', marginBottom: 4 },

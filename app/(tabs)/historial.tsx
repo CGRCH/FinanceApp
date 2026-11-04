@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect } from 'react';
 
 import { MonthHistoryCard } from '@/src/components/historial/MonthHistoryCard';
 import { MonthNavigator } from '@/src/components/planilla/MonthNavigator';
+import { KeyboardAwareScrollView } from '@/src/components/ui/KeyboardAwareScrollView';
 import { BodyText, Card, MoneyText, SectionTitle } from '@/src/components/ui/Primitives';
+import { SafeScreen } from '@/src/components/ui/SafeScreen';
 import { useFinance } from '@/src/context/FinanceContext';
 import { formatClp } from '@/src/domain/money';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
@@ -37,9 +39,10 @@ export default function HistorialScreen() {
   const canEditPlanilla = isMonthEditable(viewMonthKey);
 
   return (
-    <ScrollView
-      style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
-      contentContainerStyle={styles.content}>
+    <SafeScreen>
+      <KeyboardAwareScrollView
+        style={StyleSheet.flatten([styles.container, { backgroundColor: colors.background }])}
+        contentContainerStyle={styles.content}>
       <Text style={[styles.title, { color: colors.text }]}>Historial</Text>
       <BodyText muted>Resumen de meses guardados y detalle mes a mes con las flechas.</BodyText>
 
@@ -110,13 +113,14 @@ export default function HistorialScreen() {
           </Pressable>
         </Card>
       ) : null}
-    </ScrollView>
+      </KeyboardAwareScrollView>
+    </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
+  content: { padding: spacing.md, gap: spacing.sm },
   title: { fontSize: 26, fontWeight: '800' },
   badge: {
     marginHorizontal: spacing.md,

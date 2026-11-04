@@ -1,13 +1,17 @@
 import { SymbolView } from 'expo-symbols';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
 import { useFinance } from '@/src/context/FinanceContext';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { spacing } from '@/src/theme/tokens';
 
 export default function TabLayout() {
   const { effectiveScheme } = useFinance();
   const colorScheme = effectiveScheme;
+  const insets = useSafeAreaInsets();
+  const tabBarBottom = Math.max(insets.bottom, spacing.sm);
 
   return (
     <Tabs
@@ -17,6 +21,9 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: Colors[colorScheme].background,
           borderTopColor: colorScheme === 'dark' ? '#334155' : '#CBD5E1',
+          paddingBottom: tabBarBottom,
+          paddingTop: spacing.xs,
+          height: 52 + tabBarBottom,
         },
         headerStyle: { backgroundColor: Colors[colorScheme].background },
         headerTintColor: Colors[colorScheme].text,
