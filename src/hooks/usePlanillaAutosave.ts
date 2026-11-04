@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { applyDiezmoForMonth } from '@/src/domain/diezmo';
+import { applyAutoReserveToPlanilla } from '@/src/domain/planillaReserve';
 import { shouldApplyReloadAfterSave } from '@/src/domain/planillaAutosave';
 import { linkPlanillaDebtCategories } from '@/src/domain/planillaPersistence';
 import type { MonthPlanilla } from '@/src/domain/monthPlanilla';
@@ -65,7 +66,10 @@ export function usePlanillaAutosave({
       if (!editable) return;
       setStatus('saving');
       try {
-        const linked = linkPlanillaDebtCategories(snapshot, debts);
+        const linked = linkPlanillaDebtCategories(
+          applyAutoReserveToPlanilla(snapshot, Object.fromEntries(debts.map((d) => [d.id, d.balance_clp]))),
+          debts,
+        );
         await saveMonthPlanilla(db, linked);
         await refreshMonthIndex();
         await refresh();

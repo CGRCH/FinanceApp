@@ -20,6 +20,7 @@ import { useFinance } from '@/src/context/FinanceContext';
 import { isMonthEditable, monthEditability, monthEditabilityLabel } from '@/src/domain/monthEditability';
 import { applyDiezmoToPlanilla, diezmoHintLabel, isDiezmoCategory } from '@/src/domain/diezmo';
 import { formatClp } from '@/src/domain/money';
+import { allPayableLinesMarkedPaid, applyAutoReserveToPlanilla } from '@/src/domain/planillaReserve';
 import { newPlanillaLineId } from '@/src/domain/planillaLineId';
 import { lineSplitDivisor } from '@/src/domain/sharedLineSplits';
 import {
@@ -167,7 +168,8 @@ export function PlanillaEditor({ monthKey }: Props) {
   const reloadPlanilla = useCallback(async () => {
     const [loaded, debtRows] = await Promise.all([loadMonthPlanilla(db, monthKey), listDebts(db)]);
     resetLocalEdits();
-    setPlanilla(loaded);
+    const balances = Object.fromEntries(debtRows.map((d) => [d.id, d.balance_clp]));
+    setPlanilla(applyAutoReserveToPlanilla(loaded, balances));
     setDebts(debtRows);
   }, [db, monthKey, resetLocalEdits]);
 
@@ -208,13 +210,13 @@ export function PlanillaEditor({ monthKey }: Props) {
     const splits = { ...(planilla.sharedLineSplits ?? {}) };
     if (enabled) splits[lineId] = splits[lineId] ?? 2;
     else delete splits[lineId];
-    updatePlanilla({ ...planilla, sharedLineSplits: splits }, 'immediate');
+    patchPlanilla({ ...planilla, sharedLineSplits: splits }, 'immediate');
   };
 
   const setLineSplitDivisor = (lineId: string, people: number) => {
     if (!planilla || !editable) return;
     const n = Math.max(2, people);
-    updatePlanilla(
+    patchPlanilla(
       {
         ...planilla,
         sharedLineSplits: { ...(planilla.sharedLineSplits ?? {}), [lineId]: n },
@@ -239,6 +241,13 @@ export function PlanillaEditor({ monthKey }: Props) {
   const flushOnBlur = useCallback(() => {
     void flushSave();
   }, [flushSave]);
+
+  const patchPlanilla = useCallback(
+    (next: MonthPlanilla, priority: 'debounced' | 'immediate' = 'debounced') => {
+      updatePlanilla(applyAutoReserveToPlanilla(next, debtBalances), priority);
+    },
+    [debtBalances, updatePlanilla],
+  );
 
   if (!planilla || !totals || !shared) {
     return (
@@ -289,7 +298,7 @@ export function PlanillaEditor({ monthKey }: Props) {
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Total del mes</Text>
         <ClpInput
           amountClp={planilla.incomeClp}
-          onChangeAmount={(v) => updatePlanilla(applyDiezmoToPlanilla({ ...planilla, incomeClp: v }), 'immediate')}
+          onChangeAmount={(v) => patchPlanilla(applyDiezmoToPlanilla({ ...planilla, incomeClp: v }), 'immediate')}
           onBlur={flushOnBlur}
           editable={editable}
         />
@@ -309,14 +318,14 @@ export function PlanillaEditor({ monthKey }: Props) {
               if (isDiezmoCategory(line.category)) return;
               const fixedLines = [...planilla.fixedLines];
               fixedLines[i] = { ...line, amountClp: v };
-              updatePlanilla({ ...planilla, fixedLines }, 'debounced');
+              patchPlanilla({ ...planilla, fixedLines }, 'debounced');
             }}
             onAmountBlur={flushOnBlur}
             showPaidToggle
             onPaidChange={(paid) => {
               const fixedLines = [...planilla.fixedLines];
               fixedLines[i] = { ...line, paid };
-              updatePlanilla({ ...planilla, fixedLines }, 'immediate');
+              patchPlanilla({ ...planilla, fixedLines }, 'immediate');
             }}
             splitDivisor={lineSplitDivisor(planilla.sharedLineSplits ?? {}, line.id)}
           />
@@ -345,17 +354,17 @@ export function PlanillaEditor({ monthKey }: Props) {
             onCategoryChange={(v) => {
               const additionalLines = [...planilla.additionalLines];
               additionalLines[i] = { ...line, category: v };
-              updatePlanilla({ ...planilla, additionalLines }, 'debounced');
+              patchPlanilla({ ...planilla, additionalLines }, 'debounced');
             }}
             onCategoryBlur={flushOnBlur}
             onAmountChange={(v) => {
               const additionalLines = [...planilla.additionalLines];
               additionalLines[i] = { ...line, amountClp: v };
-              updatePlanilla({ ...planilla, additionalLines }, 'debounced');
+              patchPlanilla({ ...planilla, additionalLines }, 'debounced');
             }}
             onAmountBlur={flushOnBlur}
             onRemove={() =>
-              updatePlanilla(
+              patchPlanilla(
                 {
                   ...planilla,
                   additionalLines: planilla.additionalLines.filter((_, idx) => idx !== i),
@@ -368,7 +377,7 @@ export function PlanillaEditor({ monthKey }: Props) {
             onPaidChange={(paid) => {
               const additionalLines = [...planilla.additionalLines];
               additionalLines[i] = { ...line, paid };
-              updatePlanilla({ ...planilla, additionalLines }, 'immediate');
+              patchPlanilla({ ...planilla, additionalLines }, 'immediate');
             }}
             splitDivisor={lineSplitDivisor(planilla.sharedLineSplits ?? {}, line.id)}
           />
@@ -376,7 +385,7 @@ export function PlanillaEditor({ monthKey }: Props) {
         {editable ? (
         <Pressable
           onPress={() =>
-            updatePlanilla(
+            patchPlanilla(
               {
                 ...planilla,
                 additionalLines: [
@@ -400,7 +409,7 @@ export function PlanillaEditor({ monthKey }: Props) {
           planilla={planilla}
           activeDebts={activeDebts}
           persistPlanilla={async (next) => {
-            updatePlanilla(next, 'immediate');
+            patchPlanilla(next, 'immediate');
           }}
           persisting={status === 'saving' || status === 'pending'}
         />
@@ -408,6 +417,11 @@ export function PlanillaEditor({ monthKey }: Props) {
 
       <Card>
         <SectionTitle>Reserva</SectionTitle>
+        <BodyText muted>
+          {allPayableLinesMarkedPaid(planilla, debtBalances)
+            ? 'Calculada al tener todo marcado Pagado: ingresos − gastos (tu parte con divisiones).'
+            : 'Se completa cuando todos los ítems con monto estén marcados Pagado (igual al Disponible restante).'}
+        </BodyText>
         <ClpInput
           amountClp={planilla.reserveClp}
           onChangeAmount={(v) => updatePlanilla({ ...planilla, reserveClp: v }, 'debounced')}

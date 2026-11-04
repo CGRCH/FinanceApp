@@ -7,6 +7,7 @@ import {
   type PlanillaLine,
 } from './monthPlanilla';
 import { diezmoHintLabel, isDiezmoCategory } from './diezmo';
+import { isLinePaidFlag } from './planillaReserve';
 import { formatClp } from './money';
 import { yourShareClp } from './sharedExpenses';
 import { lineEffectiveClp, lineSplitDivisor, type SharedLineSplits } from './sharedLineSplits';
@@ -61,7 +62,7 @@ function lineRows(
         group,
         label: l.category.trim() || 'Ítem',
         committedClp: committed,
-        paid: !!l.paid,
+        paid: isLinePaidFlag(l.paid),
         note: notes.length > 0 ? notes.join(' · ') : undefined,
       };
     })
@@ -86,7 +87,7 @@ function debtRows(
           ? `${debtNames[l.debtId] ?? 'Pago de deuda'} · Cuota ${l.installmentIndex}`
           : debtNames[l.debtId] ?? 'Pago de deuda',
       committedClp: committed,
-      paid: !!l.paid,
+      paid: isLinePaidFlag(l.paid),
       note: l.paymentKind === 'full' ? 'Pago total' : 'Abono',
     });
   }

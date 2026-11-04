@@ -1,6 +1,7 @@
 import { yourShareClp } from './sharedExpenses';
 import { lineEffectiveClp, lineSplitDivisor, type SharedLineSplits } from './sharedLineSplits';
 import { coerceClpAmount } from './sqliteCoerce';
+import { isLinePaidFlag } from './planillaReserve';
 import { DEFAULT_FIXED_EXPENSE_TEMPLATE } from './fixedExpenseTemplate';
 
 export const DEFAULT_FIXED_CATEGORIES = DEFAULT_FIXED_EXPENSE_TEMPLATE.items.map((i) => i.name) as readonly string[];
@@ -135,20 +136,20 @@ export function computeMonthTotals(
   for (const line of planilla.fixedLines) {
     const amt = lineEffectiveClp(line, splits);
     if (amt <= 0) continue;
-    if (line.paid) paidSoFarClp += amt;
+    if (isLinePaidFlag(line.paid)) paidSoFarClp += amt;
     else pendingOutflowsClp += amt;
   }
   for (const line of planilla.additionalLines) {
     const amt = lineEffectiveClp(line, splits);
     if (amt <= 0) continue;
-    if (line.paid) paidSoFarClp += amt;
+    if (isLinePaidFlag(line.paid)) paidSoFarClp += amt;
     else pendingOutflowsClp += amt;
   }
   for (const line of planilla.debtPaymentLines) {
     const balance = debtBalances[line.debtId] ?? line.amountClp;
     const amt = debtPaymentOutflowClp(line, balance);
     if (amt <= 0) continue;
-    if (line.paid) paidSoFarClp += amt;
+    if (isLinePaidFlag(line.paid)) paidSoFarClp += amt;
     else pendingOutflowsClp += amt;
   }
 
