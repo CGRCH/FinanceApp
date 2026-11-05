@@ -529,7 +529,22 @@ function sortMonthKeysAsc(keys: string[]): string[] {
 }
 
 export async function listDebts(db: SQLiteDatabase): Promise<DebtRow[]> {
-  return db.getAllAsync<DebtRow>('SELECT * FROM debts ORDER BY sort_order ASC, name ASC');
+  const rows = await db.getAllAsync<DebtRow>('SELECT * FROM debts ORDER BY sort_order ASC, name ASC');
+  return rows.map(normalizeDebtRow);
+}
+
+function normalizeDebtRow(row: DebtRow): DebtRow {
+  return {
+    ...row,
+    balance_clp: coerceClpAmount(row.balance_clp),
+    minimum_payment_clp: coerceClpAmount(row.minimum_payment_clp),
+    interest_rate_bps: coerceSqliteInteger(row.interest_rate_bps),
+    sort_order: coerceSqliteInteger(row.sort_order, 0),
+    total_clp: row.total_clp != null ? coerceClpAmount(row.total_clp) : null,
+    installments_total: row.installments_total != null ? coerceSqliteInteger(row.installments_total, 1) : null,
+    installment_amount_clp:
+      row.installment_amount_clp != null ? coerceClpAmount(row.installment_amount_clp) : null,
+  };
 }
 
 export async function upsertDebt(
@@ -616,19 +631,24 @@ export async function listDebtPaymentHistory(
   db: SQLiteDatabase,
   debtId?: string,
 ): Promise<DebtPaymentHistoryRow[]> {
+  const mapRows = (rows: DebtPaymentHistoryRow[]) =>
+    rows.map((r) => ({ ...r, amount_clp: coerceClpAmount(r.amount_clp) }));
+
   if (debtId) {
-    return db.getAllAsync<DebtPaymentHistoryRow>(
+    const rows = await db.getAllAsync<DebtPaymentHistoryRow>(
       `SELECT id, debt_id, month_key, amount_clp, note, created_at
        FROM transactions WHERE kind = 'debt_payment' AND debt_id = ?
        ORDER BY created_at DESC`,
       debtId,
     );
+    return mapRows(rows);
   }
-  return db.getAllAsync<DebtPaymentHistoryRow>(
+  const rows = await db.getAllAsync<DebtPaymentHistoryRow>(
     `SELECT id, debt_id, month_key, amount_clp, note, created_at
      FROM transactions WHERE kind = 'debt_payment'
      ORDER BY created_at DESC`,
   );
+  return mapRows(rows);
 }
 
 export async function listDebtPaymentRecords(
